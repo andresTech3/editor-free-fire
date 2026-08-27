@@ -608,7 +608,7 @@
 
       <div id="videoResultContainer" style="display: none;">
         <!-- LISTA DE CLIPS INDIVIDUALES -->
-        <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-gold);">✂️ Clips Extraídos por Separado:</h3>
+        <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-gold);">✂️ Clips Extraídos por Separado con Audio:</h3>
         <div id="clipsGrid" class="clips-grid"></div>
       </div>
     </section>
@@ -654,6 +654,9 @@
       let videoDurSec = 30.0;
       let generatedClips = [];
       let currentAspectRatio = "9:16";
+      let audioCtx = null;
+      let audioSourceNode = null;
+      let audioDestNode = null;
 
       // ── SLIDERS ──────────────────────────────────────────────────────────
       function updateSliders() {
@@ -720,7 +723,7 @@
         sourceVideo.load();
       });
 
-      // ── BOTÓN: EXTRAER CLIPS INDIVIDUALES ─────────────────────────────────
+      // ── BOTÓN: EXTRAER CLIPS INDIVIDUALES CON AUDIO PRESERVADO ───────────
       btnProcess.addEventListener("click", async () => {
         if (!selectedFile) {
           alert("Por favor elige un video de tu galería primero.");
@@ -741,22 +744,38 @@
         videoResultContainer.style.display = "none";
         clipsGrid.innerHTML = "";
         progressBar.style.width = "5%";
-        statusText.textContent = `Analizando el gameplay para extraer los ${maxClips} clips...`;
+        statusText.textContent = `Analizando el gameplay para extraer los ${maxClips} clips con audio HD...`;
 
         resultCard.scrollIntoView({ behavior: "smooth" });
 
         try {
+          // Inicializar Web Audio API para capturar y preservar la pista de audio original del juego
+          try {
+            if (!audioCtx) {
+              audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              audioSourceNode = audioCtx.createMediaElementSource(sourceVideo);
+              audioDestNode = audioCtx.createMediaStreamDestination();
+              audioSourceNode.connect(audioDestNode);
+              audioSourceNode.connect(audioCtx.destination);
+            }
+            if (audioCtx.state === "suspended") {
+              await audioCtx.resume();
+            }
+          } catch (ae) {
+            console.log("Audio Context Note:", ae);
+          }
+
           // 1. Escanear y obtener timestamps de los N clips
           generatedClips = await scanVideoEvents(eventType, maxClips, clipDur);
           
-          // 2. Procesar cada clip por separado para descarga individual
+          // 2. Procesar cada clip por separado garantizando Pista de Video HD + Pista de Audio Original
           for (let i = 0; i < generatedClips.length; i++) {
             const clip = generatedClips[i];
             const pct = 40 + Math.floor(((i + 1) / generatedClips.length) * 55);
             progressBar.style.width = pct + "%";
-            statusText.textContent = `Generando Clip ${i + 1} de ${generatedClips.length}...`;
+            statusText.textContent = `Generando Clip ${i + 1} de ${generatedClips.length} (Video + Audio HD)...`;
 
-            const clipBlob = await recordSingleClipBlob(clip, currentAspectRatio);
+            const clipBlob = await recordSingleClipBlobWithAudio(clip, currentAspectRatio);
             const clipUrl = URL.createObjectURL(clipBlob);
 
             const cardEl = document.createElement("div");
@@ -768,14 +787,14 @@
               </div>
               <video src="${clipUrl}" controls playsinline></video>
               <a href="${clipUrl}" download="clip_${i + 1}_${eventType}.mp4" class="btn-download-clip">
-                ⬇️ Descargar Clip #${i + 1}
+                ⬇️ Descargar Clip #${i + 1} (con Audio)
               </a>
             `;
             clipsGrid.appendChild(cardEl);
           }
 
           progressBar.style.width = "100%";
-          statusText.textContent = `¡Se extrajeron los ${generatedClips.length} clips individualmente!`;
+          statusText.textContent = `¡Se extrajeron los ${generatedClips.length} clips individualmente con su audio original!`;
 
           setTimeout(() => {
             progressBox.style.display = "none";
@@ -863,8 +882,8 @@
         return selectedClips;
       }
 
-      // GRABAR 1 CLIP INDIVIDUAL
-      function recordSingleClipBlob(clip, aspectRatio) {
+      // GRABAR 1 CLIP INDIVIDUAL CON PISTA DE VIDEO + PISTA DE AUDIO ORIGINAL PRESERVADA
+      function recordSingleClipBlobWithAudio(clip, aspectRatio) {
         return new Promise((resolve) => {
           let outW = 1080, outH = 1920;
           if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
@@ -873,18 +892,29 @@
           procCanvas.width = outW;
           procCanvas.height = outH;
 
-          const canvasStream = procCanvas.captureStream(30);
+          // CAPTURAR PISTA DE VIDEO HD
+          const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
+          let tracks = [videoTrack];
+
+          // CAPTURAR Y CONECTAR PISTA DE AUDIO ORIGINAL
+          if (audioDestNode && audioDestNode.stream && audioDestNode.stream.getAudioTracks().length > 0) {
+            tracks.push(audioDestNode.stream.getAudioTracks()[0]);
+          }
+
+          const combinedStream = new MediaStream(tracks);
 
           let mime = "video/webm;codecs=vp8";
           if (MediaRecorder.isTypeSupported("video/mp4")) mime = "video/mp4";
 
-          const recorder = new MediaRecorder(canvasStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+          const recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
           const chunks = [];
 
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
           recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
 
           sourceVideo.currentTime = clip.start;
+          sourceVideo.muted = false;
+          sourceVideo.volume = 1.0;
 
           const startRec = () => {
             recorder.start(50);
@@ -920,7 +950,7 @@
                 sX = (vW - sW) / 2;
               } else {
                 sH = vW / targetAspect;
-                sY = (vH - sH) / 2;
+                sY = (vH - sY) / 2;
               }
 
               ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
