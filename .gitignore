@@ -1,0 +1,20 @@
+# Output and build directories
+output/
+dist/
+build/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wav
+*.mp3
+
+# Python bytecode and temp
+__pycache__/
+*.pyc
+*.log
+.tempmediaStorage/
+
+# OS specific
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+{
+  "name": "Free Fire Clip Extractor",
+  "short_name": "FF Clips",
+  "description": "Recopilador Inteligente de Clips de Free Fire para Celulares Android y iPhone",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0e0e18",
+  "theme_color": "#ff0055",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/color/512/free-fire.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
