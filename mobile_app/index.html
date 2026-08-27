@@ -375,15 +375,30 @@
       transition: width 0.2s ease;
     }
 
+    /* CONTENEDOR 9:16 VERTICAL CORREGIDO */
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+    }
+
     .video-preview {
       width: 100%;
-      max-height: 420px;
-      border-radius: 12px;
+      max-width: 270px;
+      height: 480px;
+      aspect-ratio: 9/16;
+      border-radius: 16px;
       background: #000;
+      border: 2px solid var(--accent-red);
+      object-fit: cover;
+      box-shadow: 0 8px 30px rgba(255, 0, 85, 0.3);
     }
 
     .btn-download {
       display: block;
+      width: 100%;
       background: #00aa66;
       color: #fff;
       text-decoration: none;
@@ -580,7 +595,7 @@
         </div>
       </div>
 
-      <div id="videoResultBox" style="display: none;">
+      <div id="videoResultBox" class="preview-container" style="display: none;">
         <video id="resultVideo" controls playsinline class="video-preview"></video>
         <a id="btnDownload" class="btn-download" download="recopilacion_freefire.mp4">
           ⬇️ Descargar Video a tu Galería
@@ -588,8 +603,8 @@
       </div>
     </section>
 
-    <!-- HIDDEN CANVAS & VIDEO FOR PROCESSING -->
-    <video id="sourceVideo" style="display: none;" playsinline muted></video>
+    <!-- REPRODUCTOR Y CANVAS OCULTOS -->
+    <video id="sourceVideo" style="display: none;" playsinline crossorigin="anonymous"></video>
     <canvas id="procCanvas" style="display: none;"></canvas>
 
     <footer class="app-footer">
@@ -628,8 +643,11 @@
 
       let selectedFile = null;
       let videoDurSec = 30.0;
+      let audioCtx = null;
+      let audioSourceNode = null;
+      let audioDestNode = null;
 
-      // ── SLIDERS LIVE UPDATE ──────────────────────────────────────────────
+      // ── SLIDERS ──────────────────────────────────────────────────────────
       function updateSliders() {
         if (valClips && inputMaxClips) valClips.textContent = inputMaxClips.value + " clips";
         if (valDur && inputClipDur) valDur.textContent = parseFloat(inputClipDur.value).toFixed(1) + " seg";
@@ -641,7 +659,7 @@
       });
       updateSliders();
 
-      // ── CARDS & FORMAT SELECTION ─────────────────────────────────────────
+      // ── TARJETAS DE EVENTO & FORMATO ────────────────────────────────────
       document.querySelectorAll('input[name="eventType"]').forEach(radio => {
         radio.addEventListener("change", () => {
           document.querySelectorAll(".event-card").forEach(c => c.classList.remove("active"));
@@ -655,10 +673,26 @@
           document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
           const btn = radio.closest(".fmt-btn");
           if (btn) btn.classList.add("active");
+
+          // Ajustar previsualizador CSS para 9:16, 16:9 o 1:1
+          const fmt = radio.value;
+          if (fmt === "16:9") {
+            resultVideo.style.maxWidth = "100%";
+            resultVideo.style.height = "240px";
+            resultVideo.style.aspectRatio = "16/9";
+          } else if (fmt === "1:1") {
+            resultVideo.style.maxWidth = "320px";
+            resultVideo.style.height = "320px";
+            resultVideo.style.aspectRatio = "1/1";
+          } else { // 9:16
+            resultVideo.style.maxWidth = "270px";
+            resultVideo.style.height = "480px";
+            resultVideo.style.aspectRatio = "9/16";
+          }
         });
       });
 
-      // ── CARGA NATIVA DIRECTA DE ARCHIVO DE VIDEO ─────────────────────────
+      // ── CARGAR VIDEO ─────────────────────────────────────────────────────
       videoInput.addEventListener("change", (e) => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
@@ -713,17 +747,34 @@
         resultCard.style.display = "block";
         progressBox.style.display = "flex";
         videoResultBox.style.display = "none";
-        progressBar.style.width = "10%";
-        statusText.textContent = "Analizando cuadros del gameplay...";
+        progressBar.style.width = "5%";
+        statusText.textContent = "Analizando cuadros del gameplay para hallar los rojos...";
 
         resultCard.scrollIntoView({ behavior: "smooth" });
 
         try {
+          // Inicializar Web Audio API para preservar el audio original del video
+          try {
+            if (!audioCtx) {
+              audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              audioSourceNode = audioCtx.createMediaElementSource(sourceVideo);
+              audioDestNode = audioCtx.createMediaStreamDestination();
+              audioSourceNode.connect(audioDestNode);
+            }
+            if (audioCtx.state === "suspended") {
+              await audioCtx.resume();
+            }
+          } catch (ae) {
+            console.log("Audio WebContext note:", ae);
+          }
+
+          // 1. Escanear gameplay y seleccionar los N clips con mejores números rojos
           const clips = await scanVideoEvents(eventType, maxClips, clipDur);
           
-          progressBar.style.width = "50%";
-          statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando en HD sin deformación...`;
+          progressBar.style.width = "40%";
+          statusText.textContent = `Se detectaron ${clips.length} jugadas. Generando video HD a 1x con audio...`;
 
+          // 2. Renderizar video con audio y velocidad normal 1x
           const compiledBlob = await renderCompiledVideo(clips, aspectRatio);
 
           progressBar.style.width = "100%";
@@ -731,7 +782,7 @@
 
           setTimeout(() => {
             progressBox.style.display = "none";
-            videoResultBox.style.display = "block";
+            videoResultBox.style.display = "flex";
 
             const compiledUrl = URL.createObjectURL(compiledBlob);
             resultVideo.src = compiledUrl;
@@ -747,19 +798,20 @@
         }
       });
 
-      // ── ESCANEAR EVENTOS EN CANVAS ───────────────────────────────────────
+      // ── ESCANEAR PUNTOS DE EVENTO (OPTIMIZADO PARA ROJOS DE FREE FIRE) ───
       async function scanVideoEvents(eventType, maxClips, clipDur) {
-        const sampleStep = 0.5;
         const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
+        const sampleStep = 0.5;
         const totalSamples = Math.floor(dur / sampleStep);
         const scoredSamples = [];
 
+        // Escanear cuadrantes para mayor precisión
         for (let i = 0; i < totalSamples; i++) {
           const time = i * sampleStep;
           sourceVideo.currentTime = time;
 
           await new Promise(res => {
-            const timer = setTimeout(res, 100);
+            const timer = setTimeout(res, 80);
             sourceVideo.onseeked = () => { clearTimeout(timer); res(); };
           });
 
@@ -776,27 +828,27 @@
               const g = frameData[p + 1];
               const b = frameData[p + 2];
               
-              // Umbral optimizado para números rojos de daño de Free Fire
-              if (r > 150 && g < 80 && b < 80 && r > (g + 50)) redCount++;
+              // Detección de Rojo Headshot en Free Fire: R marcadamente más alto que G y B
+              if (r > 140 && g < 90 && b < 90 && (r - g) > 60) redCount++;
               if (r > 190 && g > 160 && b < 60) goldCount++;
             }
 
             let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 10);
             scoredSamples.push({ time, score });
           } catch (e) {
-            scoredSamples.push({ time, score: Math.random() * 10 });
+            scoredSamples.push({ time, score: Math.random() * 5 });
           }
 
-          const pct = 10 + Math.floor((i / totalSamples) * 35);
+          const pct = 5 + Math.floor((i / totalSamples) * 35);
           progressBar.style.width = pct + "%";
         }
 
-        // Ordenar por puntaje de impacto
+        // Ordenar por mejores picos de score
         scoredSamples.sort((a, b) => b.score - a.score);
 
         const selectedClips = [];
         
-        // 1. Filtrar clips sin solaparse
+        // Seleccionar jugadas con espacio de tiempo sin encimarse
         for (const sample of scoredSamples) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
@@ -808,7 +860,7 @@
           }
         }
 
-        // 2. Garantizar que SIEMPRE devuelva los `maxClips` solicitados (ej: 5 clips)
+        // Si faltan clips para llegar a N (ej: pedir 5), llenar uniformemente a lo largo del video
         if (selectedClips.length < maxClips) {
           const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
           for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
@@ -824,7 +876,7 @@
         return selectedClips;
       }
 
-      // ── RENDERIZAR VIDEO CON RECORTE PROPORCIONAL DE ASPECT RATIO (COVER NO-DISTORTION) ──
+      // ── RENDERIZAR VIDEO CON AUDIO EN VELOCIDAD NORMAL 1X Y ASPECT RATIO 9:16 VERTICAL HD ──
       function renderCompiledVideo(clips, aspectRatio) {
         return new Promise((resolve, reject) => {
           let outW = 1080, outH = 1920;
@@ -834,7 +886,16 @@
           procCanvas.width = outW;
           procCanvas.height = outH;
 
-          const stream = procCanvas.captureStream(30);
+          // Combinar pista de Video del Canvas + pista de Audio del Video original
+          const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
+          let tracks = [videoTrack];
+          
+          if (audioDestNode && audioDestNode.stream && audioDestNode.stream.getAudioTracks().length > 0) {
+            tracks.push(audioDestNode.stream.getAudioTracks()[0]);
+          }
+
+          const combinedStream = new MediaStream(tracks);
+
           let mime = "video/webm;codecs=vp8";
           if (MediaRecorder.isTypeSupported("video/mp4")) {
             mime = "video/mp4";
@@ -842,7 +903,11 @@
             mime = "video/webm;codecs=h264";
           }
 
-          const recorder = new MediaRecorder(stream, { mimeType: mime });
+          const recorder = new MediaRecorder(combinedStream, { 
+            mimeType: mime,
+            videoBitsPerSecond: 6000000 // High Definition 6 Mbps
+          });
+
           const chunks = [];
 
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
@@ -852,11 +917,14 @@
           };
 
           recorder.start();
+          sourceVideo.muted = false; // Desmutear para enviar audio al recorder
+          sourceVideo.playbackRate = 1.0; // Velocidad normal 1.0x
 
           let currentClipIdx = 0;
 
           function processClip() {
             if (currentClipIdx >= clips.length) {
+              sourceVideo.pause();
               recorder.stop();
               return;
             }
@@ -878,7 +946,7 @@
                   return;
                 }
 
-                // MATEMÁTICA DE CROP CENTRADO PROPORCIONAL (OBJECT-FIT COVER) SIN DEFORMACIÓN
+                // CROP PROPORCIONAL CENTRADO 9:16 VERTICAL HD (OBJECT-FIT COVER)
                 const vW = sourceVideo.videoWidth || 1920;
                 const vH = sourceVideo.videoHeight || 1080;
                 const vAspect = vW / vH;
@@ -896,11 +964,12 @@
                 ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
                 requestAnimationFrame(drawFrame);
               }
+
               drawFrame();
             };
 
             sourceVideo.onseeked = onSeek;
-            setTimeout(onSeek, 200);
+            setTimeout(onSeek, 150);
           }
 
           processClip();
