@@ -143,7 +143,6 @@
       background: rgba(255, 0, 85, 0.08);
     }
 
-    /* INPUT DE ARCHIVOS NATIVO TRANSPARENTE ENCIMA */
     .upload-area input[type="file"] {
       position: absolute;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -153,7 +152,7 @@
     }
 
     .upload-content {
-      pointer-events: none; /* Desactivar interacción en textos para que el clic vaya 100% al input file */
+      pointer-events: none;
       position: relative;
       z-index: 1;
     }
@@ -666,7 +665,6 @@
 
         selectedFile = file;
         
-        // Actualización inmediata de UI al seleccionar archivo
         uploadText.textContent = "✅ Video Seleccionado: " + file.name;
         uploadArea.style.borderColor = "#00f0ff";
         uploadArea.style.background = "rgba(0, 240, 255, 0.12)";
@@ -723,8 +721,8 @@
         try {
           const clips = await scanVideoEvents(eventType, maxClips, clipDur);
           
-          progressBar.style.width = "40%";
-          statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando video...`;
+          progressBar.style.width = "50%";
+          statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando en HD sin deformación...`;
 
           const compiledBlob = await renderCompiledVideo(clips, aspectRatio);
 
@@ -777,8 +775,10 @@
               const r = frameData[p];
               const g = frameData[p + 1];
               const b = frameData[p + 2];
-              if (r > 190 && g < 40 && b < 40) redCount++;
-              if (r > 200 && g > 170 && b < 50) goldCount++;
+              
+              // Umbral optimizado para números rojos de daño de Free Fire
+              if (r > 150 && g < 80 && b < 80 && r > (g + 50)) redCount++;
+              if (r > 190 && g > 160 && b < 60) goldCount++;
             }
 
             let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 10);
@@ -787,13 +787,16 @@
             scoredSamples.push({ time, score: Math.random() * 10 });
           }
 
-          const pct = 10 + Math.floor((i / totalSamples) * 30);
+          const pct = 10 + Math.floor((i / totalSamples) * 35);
           progressBar.style.width = pct + "%";
         }
 
+        // Ordenar por puntaje de impacto
         scoredSamples.sort((a, b) => b.score - a.score);
 
         const selectedClips = [];
+        
+        // 1. Filtrar clips sin solaparse
         for (const sample of scoredSamples) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
@@ -805,11 +808,23 @@
           }
         }
 
+        // 2. Garantizar que SIEMPRE devuelva los `maxClips` solicitados (ej: 5 clips)
+        if (selectedClips.length < maxClips) {
+          const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
+          for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
+            const t = Math.min(dur - clipDur, i * stepSize);
+            const overlaps = selectedClips.some(c => Math.abs(t - c.start) < clipDur);
+            if (!overlaps) {
+              selectedClips.push({ start: Math.max(0, t), end: Math.min(dur, t + clipDur) });
+            }
+          }
+        }
+
         selectedClips.sort((a, b) => a.start - b.start);
         return selectedClips;
       }
 
-      // ── RENDERIZAR VIDEO CONCATENADO ─────────────────────────────────────
+      // ── RENDERIZAR VIDEO CON RECORTE PROPORCIONAL DE ASPECT RATIO (COVER NO-DISTORTION) ──
       function renderCompiledVideo(clips, aspectRatio) {
         return new Promise((resolve, reject) => {
           let outW = 1080, outH = 1920;
@@ -862,7 +877,23 @@
                   processClip();
                   return;
                 }
-                ctx.drawImage(sourceVideo, 0, 0, outW, outH);
+
+                // MATEMÁTICA DE CROP CENTRADO PROPORCIONAL (OBJECT-FIT COVER) SIN DEFORMACIÓN
+                const vW = sourceVideo.videoWidth || 1920;
+                const vH = sourceVideo.videoHeight || 1080;
+                const vAspect = vW / vH;
+                const targetAspect = outW / outH;
+
+                let sW = vW, sH = vH, sX = 0, sY = 0;
+                if (vAspect > targetAspect) {
+                  sW = vH * targetAspect;
+                  sX = (vW - sW) / 2;
+                } else {
+                  sH = vW / targetAspect;
+                  sY = (vH - sH) / 2;
+                }
+
+                ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
                 requestAnimationFrame(drawFrame);
               }
               drawFrame();
