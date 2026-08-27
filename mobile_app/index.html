@@ -822,7 +822,6 @@
             const clipBlob = await recordSingleClipBlob(clip, currentAspectRatio);
             const clipUrl = URL.createObjectURL(clipBlob);
 
-            // Crear tarjeta de clip en el UI
             const cardEl = document.createElement("div");
             cardEl.className = "clip-card";
             cardEl.innerHTML = `
@@ -956,7 +955,7 @@
         return selectedClips;
       }
 
-      // GRABAR 1 CLIP INDIVIDUAL LIMPIO
+      // GRABAR 1 CLIP INDIVIDUAL LIMPIO (ESPERA A QUE EL REPRODUCTOR ESTÉ REPRODUCIENDO ACTIVA Y REALMENTE)
       function recordSingleClipBlob(clip, aspectRatio) {
         return new Promise((resolve) => {
           let outW = 1080, outH = 1920;
@@ -989,10 +988,19 @@
             recorder.start(50);
             sourceVideo.play().catch(() => {});
 
-            const clipStart = Date.now();
+            let clipStart = null; // INICIALIZAR EN NULL
             const durMs = (clip.end - clip.start) * 1000;
 
             function draw() {
+              // EL REPRODUCTOR DEBE ESTAR REPRODUCIENDO Y NO EN SEEKING
+              if (!clipStart) {
+                if (sourceVideo.seeking || sourceVideo.paused) {
+                  requestAnimationFrame(draw);
+                  return;
+                }
+                clipStart = Date.now(); // COMENZAR CONTEO SOLO CUANDO LA REPRODUCCIÓN EN EL NUEVO PUNTO ES REAL
+              }
+
               const elapsed = Date.now() - clipStart;
               if (elapsed >= durMs) {
                 sourceVideo.pause();
@@ -1025,7 +1033,7 @@
         });
       }
 
-      // GRABAR BUCLE CONTINUO UNIFICADO DE TODOS LOS CLIPS
+      // GRABAR BUCLE CONTINUO UNIFICADO DE TODOS LOS CLIPS (CON RELOJ BASADO EN REPRODUCCIÓN REAL)
       function recordContinuousStream(clips, aspectRatio) {
         return new Promise((resolve) => {
           let outW = 1080, outH = 1920;
@@ -1069,15 +1077,26 @@
 
             const startClipPlayback = () => {
               sourceVideo.play().catch(() => {});
-              const clipStartTime = Date.now();
+              
+              let clipStartTime = null; // INICIALIZAR EN NULL
               const targetDurationMs = (currentClip.end - currentClip.start) * 1000;
 
               function renderLoop() {
+                // EL CRONÓMETRO DE CADA CLIP SOLO EMPIEZA CUANDO EL VIDEO TERMINA DE CARGAR EL SEEK Y EMPIEZA A MOVER CUADROS
+                if (!clipStartTime) {
+                  if (sourceVideo.seeking || sourceVideo.paused) {
+                    requestAnimationFrame(renderLoop);
+                    return;
+                  }
+                  clipStartTime = Date.now();
+                }
+
                 const elapsed = Date.now() - clipStartTime;
 
                 if (elapsed >= targetDurationMs) {
                   sourceVideo.pause();
                   currentClipIndex++;
+                  sourceVideo.onseeked = null;
                   playNextClipInStream();
                   return;
                 }
