@@ -135,7 +135,7 @@
       text-align: center;
       background: rgba(255, 255, 255, 0.02);
       transition: all 0.2s ease;
-      cursor: pointer;
+      overflow: hidden;
     }
 
     .upload-area:hover, .upload-area:active {
@@ -143,11 +143,19 @@
       background: rgba(255, 0, 85, 0.08);
     }
 
+    /* INPUT DE ARCHIVOS NATIVO TRANSPARENTE ENCIMA */
     .upload-area input[type="file"] {
       position: absolute;
       top: 0; left: 0; width: 100%; height: 100%;
       opacity: 0;
+      z-index: 10;
       cursor: pointer;
+    }
+
+    .upload-content {
+      pointer-events: none; /* Desactivar interacción en textos para que el clic vaya 100% al input file */
+      position: relative;
+      z-index: 1;
     }
 
     .upload-icon {
@@ -418,7 +426,7 @@
         <h2>Seleccionar Gameplay de tu Galería</h2>
       </div>
       <div class="upload-area" id="uploadArea">
-        <input type="file" id="videoInput" accept="video/mp4,video/mov,video/quicktime,video/mkv,video/webm">
+        <input type="file" id="videoInput" accept="video/*">
         <div class="upload-content">
           <span class="upload-icon">📹</span>
           <p class="primary-text" id="uploadText">Toca aquí para elegir tu video de Free Fire</p>
@@ -592,8 +600,283 @@
 
   </div>
 
-  <script src="app.js"></script>
   <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const videoInput = document.getElementById("videoInput");
+      const uploadArea = document.getElementById("uploadArea");
+      const uploadText = document.getElementById("uploadText");
+      const videoInfo = document.getElementById("videoInfo");
+      const videoName = document.getElementById("videoName");
+      const videoDuration = document.getElementById("videoDuration");
+
+      const inputMaxClips = document.getElementById("inputMaxClips");
+      const inputClipDur = document.getElementById("inputClipDur");
+      const valClips = document.getElementById("valClips");
+      const valDur = document.getElementById("valDur");
+
+      const btnProcess = document.getElementById("btnProcess");
+      const resultCard = document.getElementById("resultCard");
+      const progressBox = document.getElementById("progressBox");
+      const statusText = document.getElementById("statusText");
+      const progressBar = document.getElementById("progressBar");
+      const videoResultBox = document.getElementById("videoResultBox");
+      const resultVideo = document.getElementById("resultVideo");
+      const btnDownload = document.getElementById("btnDownload");
+
+      const sourceVideo = document.getElementById("sourceVideo");
+      const procCanvas = document.getElementById("procCanvas");
+      const ctx = procCanvas.getContext("2d", { willReadFrequently: true });
+
+      let selectedFile = null;
+      let videoDurSec = 30.0;
+
+      // ── SLIDERS LIVE UPDATE ──────────────────────────────────────────────
+      function updateSliders() {
+        if (valClips && inputMaxClips) valClips.textContent = inputMaxClips.value + " clips";
+        if (valDur && inputClipDur) valDur.textContent = parseFloat(inputClipDur.value).toFixed(1) + " seg";
+      }
+
+      ["input", "change"].forEach(ev => {
+        if (inputMaxClips) inputMaxClips.addEventListener(ev, updateSliders);
+        if (inputClipDur) inputClipDur.addEventListener(ev, updateSliders);
+      });
+      updateSliders();
+
+      // ── CARDS & FORMAT SELECTION ─────────────────────────────────────────
+      document.querySelectorAll('input[name="eventType"]').forEach(radio => {
+        radio.addEventListener("change", () => {
+          document.querySelectorAll(".event-card").forEach(c => c.classList.remove("active"));
+          const card = radio.closest(".event-card");
+          if (card) card.classList.add("active");
+        });
+      });
+
+      document.querySelectorAll('input[name="aspectRatio"]').forEach(radio => {
+        radio.addEventListener("change", () => {
+          document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
+          const btn = radio.closest(".fmt-btn");
+          if (btn) btn.classList.add("active");
+        });
+      });
+
+      // ── CARGA NATIVA DIRECTA DE ARCHIVO DE VIDEO ─────────────────────────
+      videoInput.addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        selectedFile = file;
+        
+        // Actualización inmediata de UI al seleccionar archivo
+        uploadText.textContent = "✅ Video Seleccionado: " + file.name;
+        uploadArea.style.borderColor = "#00f0ff";
+        uploadArea.style.background = "rgba(0, 240, 255, 0.12)";
+
+        videoName.textContent = file.name;
+        videoDuration.textContent = "Cargando...";
+        videoInfo.style.display = "flex";
+        btnProcess.disabled = false;
+
+        const fileUrl = URL.createObjectURL(file);
+
+        const onDur = () => {
+          if (sourceVideo.duration && sourceVideo.duration > 0 && !isNaN(sourceVideo.duration)) {
+            videoDurSec = sourceVideo.duration;
+            videoDuration.textContent = videoDurSec.toFixed(1) + "s";
+          } else {
+            videoDurSec = 30.0;
+            videoDuration.textContent = "Listo";
+          }
+        };
+
+        sourceVideo.onloadedmetadata = onDur;
+        sourceVideo.onloadeddata = onDur;
+        sourceVideo.ondurationchange = onDur;
+
+        sourceVideo.src = fileUrl;
+        sourceVideo.load();
+      });
+
+      // ── GENERAR RECOPILACIÓN ─────────────────────────────────────────────
+      btnProcess.addEventListener("click", async () => {
+        if (!selectedFile) {
+          alert("Por favor elige un video de tu galería primero.");
+          return;
+        }
+
+        const eventRadio = document.querySelector('input[name="eventType"]:checked');
+        const aspectRadio = document.querySelector('input[name="aspectRatio"]:checked');
+        
+        const eventType = eventRadio ? eventRadio.value : "tiros_rojo";
+        const aspectRatio = aspectRadio ? aspectRadio.value : "9:16";
+        const maxClips = parseInt(inputMaxClips.value);
+        const clipDur = parseFloat(inputClipDur.value);
+
+        btnProcess.disabled = true;
+        resultCard.style.display = "block";
+        progressBox.style.display = "flex";
+        videoResultBox.style.display = "none";
+        progressBar.style.width = "10%";
+        statusText.textContent = "Analizando cuadros del gameplay...";
+
+        resultCard.scrollIntoView({ behavior: "smooth" });
+
+        try {
+          const clips = await scanVideoEvents(eventType, maxClips, clipDur);
+          
+          progressBar.style.width = "40%";
+          statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando video...`;
+
+          const compiledBlob = await renderCompiledVideo(clips, aspectRatio);
+
+          progressBar.style.width = "100%";
+          statusText.textContent = "¡Recopilación completada con éxito!";
+
+          setTimeout(() => {
+            progressBox.style.display = "none";
+            videoResultBox.style.display = "block";
+
+            const compiledUrl = URL.createObjectURL(compiledBlob);
+            resultVideo.src = compiledUrl;
+            btnDownload.href = compiledUrl;
+            btnDownload.download = `recopilacion_${eventType}_${aspectRatio.replace(":", "x")}.mp4`;
+            btnProcess.disabled = false;
+          }, 500);
+
+        } catch (err) {
+          console.error(err);
+          statusText.textContent = "❌ Error procesando el video: " + (err.message || "error desconocido");
+          btnProcess.disabled = false;
+        }
+      });
+
+      // ── ESCANEAR EVENTOS EN CANVAS ───────────────────────────────────────
+      async function scanVideoEvents(eventType, maxClips, clipDur) {
+        const sampleStep = 0.5;
+        const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
+        const totalSamples = Math.floor(dur / sampleStep);
+        const scoredSamples = [];
+
+        for (let i = 0; i < totalSamples; i++) {
+          const time = i * sampleStep;
+          sourceVideo.currentTime = time;
+
+          await new Promise(res => {
+            const timer = setTimeout(res, 100);
+            sourceVideo.onseeked = () => { clearTimeout(timer); res(); };
+          });
+
+          procCanvas.width = 160;
+          procCanvas.height = 280;
+          try {
+            ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
+            const frameData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height).data;
+            let redCount = 0;
+            let goldCount = 0;
+
+            for (let p = 0; p < frameData.length; p += 4) {
+              const r = frameData[p];
+              const g = frameData[p + 1];
+              const b = frameData[p + 2];
+              if (r > 190 && g < 40 && b < 40) redCount++;
+              if (r > 200 && g > 170 && b < 50) goldCount++;
+            }
+
+            let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 10);
+            scoredSamples.push({ time, score });
+          } catch (e) {
+            scoredSamples.push({ time, score: Math.random() * 10 });
+          }
+
+          const pct = 10 + Math.floor((i / totalSamples) * 30);
+          progressBar.style.width = pct + "%";
+        }
+
+        scoredSamples.sort((a, b) => b.score - a.score);
+
+        const selectedClips = [];
+        for (const sample of scoredSamples) {
+          if (selectedClips.length >= maxClips) break;
+          const t = sample.time;
+          const overlaps = selectedClips.some(c => Math.abs(t - c.start) < clipDur);
+          if (!overlaps) {
+            const start = Math.max(0, t - 1.0);
+            const end = Math.min(dur, start + clipDur);
+            selectedClips.push({ start, end });
+          }
+        }
+
+        selectedClips.sort((a, b) => a.start - b.start);
+        return selectedClips;
+      }
+
+      // ── RENDERIZAR VIDEO CONCATENADO ─────────────────────────────────────
+      function renderCompiledVideo(clips, aspectRatio) {
+        return new Promise((resolve, reject) => {
+          let outW = 1080, outH = 1920;
+          if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
+          else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
+
+          procCanvas.width = outW;
+          procCanvas.height = outH;
+
+          const stream = procCanvas.captureStream(30);
+          let mime = "video/webm;codecs=vp8";
+          if (MediaRecorder.isTypeSupported("video/mp4")) {
+            mime = "video/mp4";
+          } else if (MediaRecorder.isTypeSupported("video/webm;codecs=h264")) {
+            mime = "video/webm;codecs=h264";
+          }
+
+          const recorder = new MediaRecorder(stream, { mimeType: mime });
+          const chunks = [];
+
+          recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+          recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: mime });
+            resolve(blob);
+          };
+
+          recorder.start();
+
+          let currentClipIdx = 0;
+
+          function processClip() {
+            if (currentClipIdx >= clips.length) {
+              recorder.stop();
+              return;
+            }
+
+            const clip = clips[currentClipIdx];
+            sourceVideo.currentTime = clip.start;
+
+            const onSeek = () => {
+              sourceVideo.play().catch(() => {});
+              const startTime = Date.now();
+              const targetDurMs = (clip.end - clip.start) * 1000;
+
+              function drawFrame() {
+                const elapsed = Date.now() - startTime;
+                if (elapsed >= targetDurMs) {
+                  sourceVideo.pause();
+                  currentClipIdx++;
+                  processClip();
+                  return;
+                }
+                ctx.drawImage(sourceVideo, 0, 0, outW, outH);
+                requestAnimationFrame(drawFrame);
+              }
+              drawFrame();
+            };
+
+            sourceVideo.onseeked = onSeek;
+            setTimeout(onSeek, 200);
+          }
+
+          processClip();
+        });
+      }
+    });
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Error:', err));
     }
