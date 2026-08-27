@@ -645,7 +645,7 @@
       let audioSourceNode = null;
       let audioDestNode = null;
 
-      // ── SLIDERS LIVE UPDATE ──────────────────────────────────────────────
+      // ── SLIDERS ──────────────────────────────────────────────────────────
       function updateSliders() {
         if (valClips && inputMaxClips) valClips.textContent = inputMaxClips.value + " clips";
         if (valDur && inputClipDur) valDur.textContent = parseFloat(inputClipDur.value).toFixed(1) + " seg";
@@ -657,7 +657,7 @@
       });
       updateSliders();
 
-      // ── CARDS & FORMAT SELECTION ─────────────────────────────────────────
+      // ── TARJETAS DE EVENTO & FORMATO ────────────────────────────────────
       document.querySelectorAll('input[name="eventType"]').forEach(radio => {
         radio.addEventListener("change", () => {
           document.querySelectorAll(".event-card").forEach(c => c.classList.remove("active"));
@@ -765,13 +765,13 @@
           const clips = await scanVideoEvents(eventType, maxClips, clipDur);
           
           progressBar.style.width = "40%";
-          statusText.textContent = `Unificando los ${clips.length} clips en 1 solo video final...`;
+          statusText.textContent = `Grabando los ${clips.length} clips en 1 solo stream de video (${(clips.length * clipDur).toFixed(0)} segundos totales)...`;
 
-          // 2. Grabar los N clips en Blobs separados y unificarlos en 1 solo video
-          const compiledBlob = await recordAndConcatenateClips(clips, aspectRatio);
+          // 2. Grabar los N clips en UN SOLO SESIÓN DE MEDIARECORDER CONTINUA (1 solo encabezado WebM)
+          const compiledBlob = await recordContinuousStream(clips, aspectRatio);
 
           progressBar.style.width = "100%";
-          statusText.textContent = `¡Video unificado con éxito (${clips.length} clips, ${(clips.length * clipDur).toFixed(0)} segundos en total)!`;
+          statusText.textContent = `¡Video unificado de ${clips.length} clips (${(clips.length * clipDur).toFixed(0)}s) completado con éxito!`;
 
           setTimeout(() => {
             progressBox.style.display = "none";
@@ -780,7 +780,7 @@
             const compiledUrl = URL.createObjectURL(compiledBlob);
             resultVideo.src = compiledUrl;
             btnDownload.href = compiledUrl;
-            btnDownload.download = `recopilacion_${eventType}_${clips.length}clips.mp4`;
+            btnDownload.download = `recopilacion_${eventType}_${clips.length}clips_${aspectRatio.replace(":", "x")}.mp4`;
             btnProcess.disabled = false;
           }, 500);
 
@@ -791,10 +791,10 @@
         }
       });
 
-      // ── DETECTOR INTELIGENTE DE PUNTOS ROJOS EN ZONA DE MIRA ──────────────
+      // ── DETECTOR DE N CLIPS DE JUGADAS DE ROJO ────────────────────────────
       async function scanVideoEvents(eventType, maxClips, clipDur) {
         const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
-        const sampleStep = 0.4; // Muestreo cada 0.4s
+        const sampleStep = 0.4;
         const totalSamples = Math.floor(dur / sampleStep);
         const scoredSamples = [];
 
@@ -803,7 +803,7 @@
           sourceVideo.currentTime = time;
 
           await new Promise(res => {
-            const timer = setTimeout(res, 60);
+            const timer = setTimeout(res, 50);
             sourceVideo.onseeked = () => { clearTimeout(timer); res(); };
           });
 
@@ -811,7 +811,6 @@
           procCanvas.height = 280;
           try {
             ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
-            // Escanear cuadrante central (zona de mira en Free Fire)
             const frameData = ctx.getImageData(30, 40, 100, 160).data;
             let redCount = 0;
             let goldCount = 0;
@@ -821,7 +820,7 @@
               const g = frameData[p + 1];
               const b = frameData[p + 2];
               
-              if (r > 140 && g < 100 && b < 100 && (r - g) > 40) redCount++;
+              if (r > 130 && g < 100 && b < 100 && (r - g) > 40) redCount++;
               if (r > 180 && g > 150 && b < 70) goldCount++;
             }
 
@@ -835,12 +834,11 @@
           progressBar.style.width = pct + "%";
         }
 
-        // Ordenar de mayor a menor impacto
         scoredSamples.sort((a, b) => b.score - a.score);
 
         const selectedClips = [];
         
-        // 1. Tomar las mejores jugadas sin solaparse
+        // 1. Filtrar clips sin solaparse
         for (const sample of scoredSamples) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
@@ -852,7 +850,7 @@
           }
         }
 
-        // 2. Garantizar que NUNCA falten clips hasta llegar a N (ej: si pidió 5, dará 5 clips)
+        // 2. Garantizar que NUNCA falten clips hasta llegar exactamente a N (ej: si pidió 5, dará 5 clips)
         if (selectedClips.length < maxClips) {
           const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
           for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
@@ -868,42 +866,16 @@
         return selectedClips;
       }
 
-      // ── SISTEMA DE GRABACIÓN Y UNIFICACIÓN DE N CLIPS EN 1 SOLO BLOB ───────
-      async function recordAndConcatenateClips(clips, aspectRatio) {
-        let outW = 1080, outH = 1920;
-        if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
-        else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
-
-        procCanvas.width = outW;
-        procCanvas.height = outH;
-
-        let mime = "video/webm;codecs=vp8";
-        if (MediaRecorder.isTypeSupported("video/mp4")) {
-          mime = "video/mp4";
-        } else if (MediaRecorder.isTypeSupported("video/webm;codecs=h264")) {
-          mime = "video/webm;codecs=h264";
-        }
-
-        const clipBlobs = [];
-
-        for (let i = 0; i < clips.length; i++) {
-          const clip = clips[i];
-          
-          const pct = 40 + Math.floor(((i + 1) / clips.length) * 55);
-          progressBar.style.width = pct + "%";
-          statusText.textContent = `Procesando clip ${i + 1} de ${clips.length}...`;
-
-          const blobChunk = await recordSingleClip(clip, outW, outH, mime);
-          clipBlobs.push(blobChunk);
-        }
-
-        // UNIFICACIÓN NATIVA INSTANTÁNEA EN 1 SOLO ARCHIVO DE VIDEO FINAL
-        return new Blob(clipBlobs, { type: mime });
-      }
-
-      // GRABAR 1 CLIP INDIVIDUAL LIMPIO
-      function recordSingleClip(clip, outW, outH, mime) {
+      // ── BUCLE DE GRABACIÓN ÚNICA CONTINUA (SINGLE WEBM HEADER - FULL DURATION) ──
+      function recordContinuousStream(clips, aspectRatio) {
         return new Promise((resolve) => {
+          let outW = 1080, outH = 1920;
+          if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
+          else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
+
+          procCanvas.width = outW;
+          procCanvas.height = outH;
+
           const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
           let tracks = [videoTrack];
           
@@ -912,56 +884,90 @@
           }
 
           const stream = new MediaStream(tracks);
-          const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
-          const chunks = [];
 
+          let mime = "video/webm;codecs=vp8";
+          if (MediaRecorder.isTypeSupported("video/mp4")) {
+            mime = "video/mp4";
+          } else if (MediaRecorder.isTypeSupported("video/webm;codecs=h264")) {
+            mime = "video/webm;codecs=h264";
+          }
+
+          const recorder = new MediaRecorder(stream, { 
+            mimeType: mime,
+            videoBitsPerSecond: 6000000 
+          });
+
+          const chunks = [];
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
           recorder.onstop = () => {
-            const b = new Blob(chunks, { type: mime });
-            resolve(b);
+            const finalBlob = new Blob(chunks, { type: mime });
+            resolve(finalBlob);
           };
 
-          sourceVideo.currentTime = clip.start;
+          // Iniciar la sesión de grabación ÚNICA una sola vez
+          recorder.start(100);
           sourceVideo.muted = false;
+          sourceVideo.playbackRate = 1.0;
 
-          const startRec = () => {
-            recorder.start(50);
-            sourceVideo.play().catch(() => {});
+          let currentClipIndex = 0;
 
-            const clipStart = Date.now();
-            const durMs = (clip.end - clip.start) * 1000;
-
-            function draw() {
-              const elapsed = Date.now() - clipStart;
-              if (elapsed >= durMs) {
-                sourceVideo.pause();
-                recorder.stop();
-                return;
-              }
-
-              // CROP HD CENTRADO PROPORCIONAL
-              const vW = sourceVideo.videoWidth || 1920;
-              const vH = sourceVideo.videoHeight || 1080;
-              const vAspect = vW / vH;
-              const targetAspect = outW / outH;
-
-              let sW = vW, sH = vH, sX = 0, sY = 0;
-              if (vAspect > targetAspect) {
-                sW = vH * targetAspect;
-                sX = (vW - sW) / 2;
-              } else {
-                sH = vW / targetAspect;
-                sY = (vH - sH) / 2;
-              }
-
-              ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
-              requestAnimationFrame(draw);
+          function playNextClipInStream() {
+            if (currentClipIndex >= clips.length) {
+              sourceVideo.pause();
+              setTimeout(() => recorder.stop(), 200);
+              return;
             }
-            draw();
-          };
 
-          sourceVideo.onseeked = startRec;
-          setTimeout(startRec, 100);
+            const currentClip = clips[currentClipIndex];
+            
+            const pct = 40 + Math.floor(((currentClipIndex + 1) / clips.length) * 55);
+            progressBar.style.width = pct + "%";
+            statusText.textContent = `Grabando clip ${currentClipIndex + 1} de ${clips.length}...`;
+
+            sourceVideo.currentTime = currentClip.start;
+
+            const startClipPlayback = () => {
+              sourceVideo.play().catch(() => {});
+              const clipStartTime = Date.now();
+              const targetDurationMs = (currentClip.end - currentClip.start) * 1000;
+
+              function renderLoop() {
+                const elapsed = Date.now() - clipStartTime;
+
+                if (elapsed >= targetDurationMs) {
+                  sourceVideo.pause();
+                  currentClipIndex++;
+                  playNextClipInStream(); // Pasa al siguiente clip DENTRO DE LA MISMA SESIÓN DE GRABACIÓN
+                  return;
+                }
+
+                // CROP HD CENTRADO 9:16 VERTICAL PROPORCIONAL
+                const vW = sourceVideo.videoWidth || 1920;
+                const vH = sourceVideo.videoHeight || 1080;
+                const vAspect = vW / vH;
+                const targetAspect = outW / outH;
+
+                let sW = vW, sH = vH, sX = 0, sY = 0;
+                if (vAspect > targetAspect) {
+                  sW = vH * targetAspect;
+                  sX = (vW - sW) / 2;
+                } else {
+                  sH = vW / targetAspect;
+                  sY = (vH - sH) / 2;
+                }
+
+                ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
+                requestAnimationFrame(renderLoop);
+              }
+
+              renderLoop();
+            };
+
+            sourceVideo.onseeked = startClipPlayback;
+            setTimeout(startClipPlayback, 120);
+          }
+
+          playNextClipInStream();
         });
       }
     });
