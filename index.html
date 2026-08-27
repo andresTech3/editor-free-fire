@@ -375,21 +375,7 @@
       transition: width 0.2s ease;
     }
 
-    /* N CLIPS INDIVIDUALES Y UNIFICACIÓN */
-    .btn-unify {
-      background: linear-gradient(135deg, #00f0ff, #0088ff);
-      color: #000;
-      border: none;
-      border-radius: 12px;
-      padding: 14px;
-      font-size: 14px;
-      font-weight: 900;
-      cursor: pointer;
-      margin-bottom: 16px;
-      box-shadow: 0 4px 18px rgba(0, 240, 255, 0.4);
-      width: 100%;
-    }
-
+    /* N CLIPS INDIVIDUALES */
     .clips-grid {
       display: flex;
       flex-direction: column;
@@ -434,18 +420,6 @@
       font-size: 13px;
       font-weight: 800;
       box-shadow: 0 4px 12px rgba(0, 170, 102, 0.3);
-    }
-
-    .unified-box {
-      background: rgba(0, 240, 255, 0.08);
-      border: 1px dashed var(--accent-cyan);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 16px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
     }
 
     .app-footer {
@@ -633,21 +607,6 @@
       </div>
 
       <div id="videoResultContainer" style="display: none;">
-        
-        <!-- BOTÓN PARA UNIFICAR TODOS LOS CLIPS -->
-        <button id="btnUnifyAll" class="btn-unify">
-          ⚡ UNIFICAR TODOS LOS CLIPS EN 1 SOLO VIDEO COMPLETO
-        </button>
-
-        <!-- SECCIÓN DE VIDEO UNIFICADO (OCULTA POR DEFECTO HASTA DAR CLIC) -->
-        <div id="unifiedBox" class="unified-box" style="display: none;">
-          <h3 style="color: var(--accent-cyan); font-size: 14px;">🎬 Video Unificado Completo</h3>
-          <video id="unifiedVideo" controls playsinline style="width: 100%; max-height: 400px; border-radius: 12px; background: #000; object-fit: cover;"></video>
-          <a id="btnDownloadUnified" class="btn-download-clip" style="width: 100%; background: #0088ff;" download="recopilacion_unificada.mp4">
-            ⬇️ Descargar Video Unificado Completo
-          </a>
-        </div>
-
         <!-- LISTA DE CLIPS INDIVIDUALES -->
         <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-gold);">✂️ Clips Extraídos por Separado:</h3>
         <div id="clipsGrid" class="clips-grid"></div>
@@ -686,10 +645,6 @@
       const progressBar = document.getElementById("progressBar");
       const videoResultContainer = document.getElementById("videoResultContainer");
       const clipsGrid = document.getElementById("clipsGrid");
-      const btnUnifyAll = document.getElementById("btnUnifyAll");
-      const unifiedBox = document.getElementById("unifiedBox");
-      const unifiedVideo = document.getElementById("unifiedVideo");
-      const btnDownloadUnified = document.getElementById("btnDownloadUnified");
 
       const sourceVideo = document.getElementById("sourceVideo");
       const procCanvas = document.getElementById("procCanvas");
@@ -784,7 +739,6 @@
         resultCard.style.display = "block";
         progressBox.style.display = "flex";
         videoResultContainer.style.display = "none";
-        unifiedBox.style.display = "none";
         clipsGrid.innerHTML = "";
         progressBar.style.width = "5%";
         statusText.textContent = `Analizando el gameplay para extraer los ${maxClips} clips...`;
@@ -833,35 +787,6 @@
           console.error(err);
           statusText.textContent = "❌ Error procesando los clips: " + (err.message || "error desconocido");
           btnProcess.disabled = false;
-        }
-      });
-
-      // ── BOTÓN: UNIFICAR TODOS LOS CLIPS EN 1 SOLO VIDEO ──────────────────
-      btnUnifyAll.addEventListener("click", async () => {
-        if (!generatedClips || generatedClips.length === 0) return;
-
-        btnUnifyAll.disabled = true;
-        progressBox.style.display = "flex";
-        progressBar.style.width = "10%";
-        statusText.textContent = `Unificando los ${generatedClips.length} clips en 1 solo video continuo...`;
-
-        try {
-          const unifiedBlob = await recordContinuousCanvasStream(generatedClips, currentAspectRatio);
-          const unifiedUrl = URL.createObjectURL(unifiedBlob);
-
-          unifiedVideo.src = unifiedUrl;
-          btnDownloadUnified.href = unifiedUrl;
-          btnDownloadUnified.download = `recopilacion_unificada_${generatedClips.length}clips.mp4`;
-
-          progressBox.style.display = "none";
-          unifiedBox.style.display = "flex";
-          btnUnifyAll.disabled = false;
-          unifiedBox.scrollIntoView({ behavior: "smooth" });
-
-        } catch (err) {
-          console.error(err);
-          statusText.textContent = "❌ Error unificando: " + (err.message || "error");
-          btnUnifyAll.disabled = false;
         }
       });
 
@@ -1006,99 +931,6 @@
 
           sourceVideo.onseeked = startRec;
           setTimeout(startRec, 100);
-        });
-      }
-
-      // GRABAR UNIFICACIÓN CONTINUA DE CANVAS (SIN CORTE DE 6S - 30 FPS CONSTANTE)
-      function recordContinuousCanvasStream(clips, aspectRatio) {
-        return new Promise((resolve) => {
-          let outW = 1080, outH = 1920;
-          if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
-          else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
-
-          procCanvas.width = outW;
-          procCanvas.height = outH;
-
-          // CAPTURAR EL STREAM CONTINUO DEL CANVAS DIRECTO DE 30 FPS SIN SALTOS DE AUDIO
-          const canvasStream = procCanvas.captureStream(30);
-
-          let mime = "video/webm;codecs=vp8";
-          if (MediaRecorder.isTypeSupported("video/mp4")) mime = "video/mp4";
-
-          const recorder = new MediaRecorder(canvasStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
-          const chunks = [];
-          recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
-
-          recorder.start(100);
-
-          let clipIndex = 0;
-
-          function processClipInSequence() {
-            if (clipIndex >= clips.length) {
-              sourceVideo.pause();
-              setTimeout(() => recorder.stop(), 300);
-              return;
-            }
-
-            const currentClip = clips[clipIndex];
-            
-            const pct = 40 + Math.floor(((clipIndex + 1) / clips.length) * 55);
-            progressBar.style.width = pct + "%";
-            statusText.textContent = `Unificando clip ${clipIndex + 1} de ${clips.length}...`;
-
-            sourceVideo.currentTime = currentClip.start;
-
-            const onSeeked = () => {
-              sourceVideo.play().catch(() => {});
-              
-              let startTime = null;
-              const targetDurMs = (currentClip.end - currentClip.start) * 1000;
-
-              function renderFrameLoop() {
-                if (!startTime) {
-                  if (sourceVideo.seeking || sourceVideo.paused) {
-                    requestAnimationFrame(renderFrameLoop);
-                    return;
-                  }
-                  startTime = Date.now();
-                }
-
-                const elapsed = Date.now() - startTime;
-
-                if (elapsed >= targetDurMs) {
-                  sourceVideo.pause();
-                  clipIndex++;
-                  processClipInSequence(); // SIGUIENTE CLIP
-                  return;
-                }
-
-                const vW = sourceVideo.videoWidth || 1920;
-                const vH = sourceVideo.videoHeight || 1080;
-                const vAspect = vW / vH;
-                const targetAspect = outW / outH;
-
-                let sW = vW, sH = vH, sX = 0, sY = 0;
-                if (vAspect > targetAspect) {
-                  sW = vH * targetAspect;
-                  sX = (vW - sW) / 2;
-                } else {
-                  sH = vW / targetAspect;
-                  sY = (vH - sH) / 2;
-                }
-
-                ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
-                requestAnimationFrame(renderFrameLoop);
-              }
-
-              renderFrameLoop();
-            };
-
-            sourceVideo.onseeked = onSeeked;
-            setTimeout(onSeeked, 150);
-          }
-
-          processClipInSequence();
         });
       }
     });
