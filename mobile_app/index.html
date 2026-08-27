@@ -674,7 +674,6 @@
           const btn = radio.closest(".fmt-btn");
           if (btn) btn.classList.add("active");
 
-          // Ajustar previsualizador CSS para 9:16, 16:9 o 1:1
           const fmt = radio.value;
           if (fmt === "16:9") {
             resultVideo.style.maxWidth = "100%";
@@ -753,7 +752,6 @@
         resultCard.scrollIntoView({ behavior: "smooth" });
 
         try {
-          // Inicializar Web Audio API para preservar el audio original del video
           try {
             if (!audioCtx) {
               audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -768,17 +766,17 @@
             console.log("Audio WebContext note:", ae);
           }
 
-          // 1. Escanear gameplay y seleccionar los N clips con mejores números rojos
+          // 1. Escanear gameplay y seleccionar exactamente los N clips
           const clips = await scanVideoEvents(eventType, maxClips, clipDur);
           
           progressBar.style.width = "40%";
-          statusText.textContent = `Se detectaron ${clips.length} jugadas. Generando video HD a 1x con audio...`;
+          statusText.textContent = `Unificando los ${clips.length} clips en 1 solo video...`;
 
-          // 2. Renderizar video con audio y velocidad normal 1x
-          const compiledBlob = await renderCompiledVideo(clips, aspectRatio);
+          // 2. Renderizar y unificar los N clips en 1 solo video continuo
+          const compiledBlob = await renderCompiledVideo(clips, aspectRatio, maxClips);
 
           progressBar.style.width = "100%";
-          statusText.textContent = "¡Recopilación completada con éxito!";
+          statusText.textContent = `¡Recopilación de ${clips.length} clips unificada con éxito!`;
 
           setTimeout(() => {
             progressBox.style.display = "none";
@@ -787,31 +785,30 @@
             const compiledUrl = URL.createObjectURL(compiledBlob);
             resultVideo.src = compiledUrl;
             btnDownload.href = compiledUrl;
-            btnDownload.download = `recopilacion_${eventType}_${aspectRatio.replace(":", "x")}.mp4`;
+            btnDownload.download = `recopilacion_${eventType}_${maxClips}clips_${aspectRatio.replace(":", "x")}.mp4`;
             btnProcess.disabled = false;
           }, 500);
 
         } catch (err) {
           console.error(err);
-          statusText.textContent = "❌ Error procesando el video: " + (err.message || "error desconocido");
+          statusText.textContent = "❌ Error unificando el video: " + (err.message || "error desconocido");
           btnProcess.disabled = false;
         }
       });
 
-      // ── ESCANEAR PUNTOS DE EVENTO (OPTIMIZADO PARA ROJOS DE FREE FIRE) ───
+      // ── ESCANEAR PUNTOS DE EVENTO (ALGORITMO OPTIMIZADO PARA N CLIPS DE ROJO) ───
       async function scanVideoEvents(eventType, maxClips, clipDur) {
         const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
         const sampleStep = 0.5;
         const totalSamples = Math.floor(dur / sampleStep);
         const scoredSamples = [];
 
-        // Escanear cuadrantes para mayor precisión
         for (let i = 0; i < totalSamples; i++) {
           const time = i * sampleStep;
           sourceVideo.currentTime = time;
 
           await new Promise(res => {
-            const timer = setTimeout(res, 80);
+            const timer = setTimeout(res, 60);
             sourceVideo.onseeked = () => { clearTimeout(timer); res(); };
           });
 
@@ -828,12 +825,11 @@
               const g = frameData[p + 1];
               const b = frameData[p + 2];
               
-              // Detección de Rojo Headshot en Free Fire: R marcadamente más alto que G y B
-              if (r > 140 && g < 90 && b < 90 && (r - g) > 60) redCount++;
-              if (r > 190 && g > 160 && b < 60) goldCount++;
+              if (r > 130 && g < 100 && b < 100 && (r - g) > 40) redCount++;
+              if (r > 180 && g > 150 && b < 70) goldCount++;
             }
 
-            let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 10);
+            let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 5);
             scoredSamples.push({ time, score });
           } catch (e) {
             scoredSamples.push({ time, score: Math.random() * 5 });
@@ -848,7 +844,7 @@
 
         const selectedClips = [];
         
-        // Seleccionar jugadas con espacio de tiempo sin encimarse
+        // 1. Filtrar clips sin solaparse
         for (const sample of scoredSamples) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
@@ -860,7 +856,7 @@
           }
         }
 
-        // Si faltan clips para llegar a N (ej: pedir 5), llenar uniformemente a lo largo del video
+        // 2. Garantizar que NUNCA se quede en 1 solo clip si el usuario pidió N clips (ej: 5 clips)
         if (selectedClips.length < maxClips) {
           const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
           for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
@@ -872,12 +868,13 @@
           }
         }
 
+        // Ordenar cronológicamente para la unificación continua
         selectedClips.sort((a, b) => a.start - b.start);
         return selectedClips;
       }
 
-      // ── RENDERIZAR VIDEO CON AUDIO EN VELOCIDAD NORMAL 1X Y ASPECT RATIO 9:16 VERTICAL HD ──
-      function renderCompiledVideo(clips, aspectRatio) {
+      // ── BUCLE DE UNIFICACIÓN CONTINUA DE TODOS LOS N CLIPS EN 1 SOLO VIDEO ──
+      function renderCompiledVideo(clips, aspectRatio, maxClips) {
         return new Promise((resolve, reject) => {
           let outW = 1080, outH = 1920;
           if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
@@ -886,7 +883,6 @@
           procCanvas.width = outW;
           procCanvas.height = outH;
 
-          // Combinar pista de Video del Canvas + pista de Audio del Video original
           const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
           let tracks = [videoTrack];
           
@@ -905,48 +901,54 @@
 
           const recorder = new MediaRecorder(combinedStream, { 
             mimeType: mime,
-            videoBitsPerSecond: 6000000 // High Definition 6 Mbps
+            videoBitsPerSecond: 6000000
           });
 
           const chunks = [];
-
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
           recorder.onstop = () => {
             const blob = new Blob(chunks, { type: mime });
             resolve(blob);
           };
 
-          recorder.start();
-          sourceVideo.muted = false; // Desmutear para enviar audio al recorder
-          sourceVideo.playbackRate = 1.0; // Velocidad normal 1.0x
+          recorder.start(100); // Guardar fragmentos cada 100ms de forma continua
+          sourceVideo.muted = false;
+          sourceVideo.playbackRate = 1.0;
 
-          let currentClipIdx = 0;
+          let clipIndex = 0;
 
-          function processClip() {
-            if (currentClipIdx >= clips.length) {
+          function renderNextClip() {
+            if (clipIndex >= clips.length) {
               sourceVideo.pause();
               recorder.stop();
               return;
             }
 
-            const clip = clips[currentClipIdx];
-            sourceVideo.currentTime = clip.start;
+            const currentClip = clips[clipIndex];
+            
+            // Actualizar porcentaje de progreso en UI
+            const pct = 40 + Math.floor(((clipIndex + 1) / clips.length) * 55);
+            progressBar.style.width = pct + "%";
+            statusText.textContent = `Unificando clip ${clipIndex + 1} de ${clips.length}...`;
 
-            const onSeek = () => {
+            sourceVideo.currentTime = currentClip.start;
+
+            const startPlayback = () => {
               sourceVideo.play().catch(() => {});
-              const startTime = Date.now();
-              const targetDurMs = (clip.end - clip.start) * 1000;
+              const clipStartTime = Date.now();
+              const durationMs = (currentClip.end - currentClip.start) * 1000;
 
-              function drawFrame() {
-                const elapsed = Date.now() - startTime;
-                if (elapsed >= targetDurMs) {
-                  sourceVideo.pause();
-                  currentClipIdx++;
-                  processClip();
+              function drawLoop() {
+                const elapsed = Date.now() - clipStartTime;
+
+                if (elapsed >= durationMs) {
+                  // Finalizó este clip -> pasar INMEDIATAMENTE al siguiente clip en el mismo recorder continuo
+                  clipIndex++;
+                  renderNextClip();
                   return;
                 }
 
-                // CROP PROPORCIONAL CENTRADO 9:16 VERTICAL HD (OBJECT-FIT COVER)
+                // CROP CENTRADO PROPORCIONAL HD 9:16 VERTICAL
                 const vW = sourceVideo.videoWidth || 1920;
                 const vH = sourceVideo.videoHeight || 1080;
                 const vAspect = vW / vH;
@@ -962,17 +964,17 @@
                 }
 
                 ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
-                requestAnimationFrame(drawFrame);
+                requestAnimationFrame(drawLoop);
               }
 
-              drawFrame();
+              drawLoop();
             };
 
-            sourceVideo.onseeked = onSeek;
-            setTimeout(onSeek, 150);
+            sourceVideo.onseeked = startPlayback;
+            setTimeout(startPlayback, 120); // Fallback por si el seek es instantáneo
           }
 
-          processClip();
+          renderNextClip();
         });
       }
     });
