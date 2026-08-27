@@ -723,7 +723,7 @@
         sourceVideo.load();
       });
 
-      // ── BOTÓN: EXTRAER CLIPS INDIVIDUALES CON AUDIO PRESERVADO ───────────
+      // ── BOTÓN: EXTRAER CLIPS INDIVIDUALES CON ALTA PRECISIÓN ─────────────
       btnProcess.addEventListener("click", async () => {
         if (!selectedFile) {
           alert("Por favor elige un video de tu galería primero.");
@@ -744,12 +744,11 @@
         videoResultContainer.style.display = "none";
         clipsGrid.innerHTML = "";
         progressBar.style.width = "5%";
-        statusText.textContent = `Analizando el gameplay para extraer los ${maxClips} clips con audio HD...`;
+        statusText.textContent = `Escaneando cuadrantes de disparo para hallar tiros rojos...`;
 
         resultCard.scrollIntoView({ behavior: "smooth" });
 
         try {
-          // Inicializar Web Audio API para capturar y preservar la pista de audio original del juego
           try {
             if (!audioCtx) {
               audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -765,15 +764,15 @@
             console.log("Audio Context Note:", ae);
           }
 
-          // 1. Escanear y obtener timestamps de los N clips
-          generatedClips = await scanVideoEvents(eventType, maxClips, clipDur);
+          // 1. Escanear con alta resolución (0.25s) y filtro de color de daño headshot
+          generatedClips = await scanVideoEventsHighPrecision(eventType, maxClips, clipDur);
           
-          // 2. Procesar cada clip por separado garantizando Pista de Video HD + Pista de Audio Original
+          // 2. Generar cada clip individual centrado en el momento exacto del tiro rojo
           for (let i = 0; i < generatedClips.length; i++) {
             const clip = generatedClips[i];
             const pct = 40 + Math.floor(((i + 1) / generatedClips.length) * 55);
             progressBar.style.width = pct + "%";
-            statusText.textContent = `Generando Clip ${i + 1} de ${generatedClips.length} (Video + Audio HD)...`;
+            statusText.textContent = `Generando Clip ${i + 1} de ${generatedClips.length} (Headshot preciso + Audio HD)...`;
 
             const clipBlob = await recordSingleClipBlobWithAudio(clip, currentAspectRatio);
             const clipUrl = URL.createObjectURL(clipBlob);
@@ -782,11 +781,11 @@
             cardEl.className = "clip-card";
             cardEl.innerHTML = `
               <div class="clip-card-header">
-                <span>🔴 Clip #${i + 1}</span>
+                <span>🔴 Clip #${i + 1} ${clip.isTrueHeadshot ? '💥 (Tiro Rojo Detectado)' : ''}</span>
                 <span>⏱️ ${(clip.end - clip.start).toFixed(1)}s (${clip.start.toFixed(1)}s ➔ ${clip.end.toFixed(1)}s)</span>
               </div>
               <video src="${clipUrl}" controls playsinline></video>
-              <a href="${clipUrl}" download="clip_${i + 1}_${eventType}.mp4" class="btn-download-clip">
+              <a href="${clipUrl}" download="headshot_clip_${i + 1}_${eventType}.mp4" class="btn-download-clip">
                 ⬇️ Descargar Clip #${i + 1} (con Audio)
               </a>
             `;
@@ -794,7 +793,7 @@
           }
 
           progressBar.style.width = "100%";
-          statusText.textContent = `¡Se extrajeron los ${generatedClips.length} clips individualmente con su audio original!`;
+          statusText.textContent = `¡Se extrajeron los ${generatedClips.length} clips precisos con su audio original!`;
 
           setTimeout(() => {
             progressBox.style.display = "none";
@@ -809,10 +808,10 @@
         }
       });
 
-      // ── DETECTOR DE N CLIPS DE JUGADAS DE ROJO ────────────────────────────
-      async function scanVideoEvents(eventType, maxClips, clipDur) {
+      // ── DETECTOR DE ALTA PRECISIÓN PARA NÚMEROS ROJOS DE DAÑO HEADSHOT EN FREE FIRE ──
+      async function scanVideoEventsHighPrecision(eventType, maxClips, clipDur) {
         const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
-        const sampleStep = 0.4;
+        const sampleStep = 0.25; // Muestreo fino a 4 fotogramas por segundo
         const totalSamples = Math.floor(dur / sampleStep);
         const scoredSamples = [];
 
@@ -821,7 +820,7 @@
           sourceVideo.currentTime = time;
 
           await new Promise(res => {
-            const timer = setTimeout(res, 50);
+            const timer = setTimeout(res, 40);
             sourceVideo.onseeked = () => { clearTimeout(timer); res(); };
           });
 
@@ -829,8 +828,10 @@
           procCanvas.height = 280;
           try {
             ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
-            const frameData = ctx.getImageData(30, 40, 100, 160).data;
-            let redCount = 0;
+            
+            // Delimitar zona central donde flotan los números de daño de la cabeza (X: 45 a 115, Y: 45 a 165)
+            const frameData = ctx.getImageData(45, 45, 70, 120).data;
+            let vividRedCount = 0;
             let goldCount = 0;
 
             for (let p = 0; p < frameData.length; p += 4) {
@@ -838,42 +839,66 @@
               const g = frameData[p + 1];
               const b = frameData[p + 2];
               
-              if (r > 130 && g < 100 && b < 100 && (r - g) > 40) redCount++;
-              if (r > 180 && g > 150 && b < 70) goldCount++;
+              // COLOR EXACTO DE DAÑO HEADSHOT EN FREE FIRE:
+              // Rojo Intenso y brillante: R >= 185, G <= 65, B <= 65, R-G >= 100, R-B >= 100
+              if (r >= 185 && g <= 65 && b <= 65 && (r - g) >= 100 && (r - b) >= 100) {
+                vividRedCount++;
+              }
+              // Amarillo de Daño Normal/Booyah: R >= 210, G >= 180, B <= 60
+              if (r >= 210 && g >= 180 && b <= 60) {
+                goldCount++;
+              }
             }
 
-            let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 5);
-            scoredSamples.push({ time, score });
+            let score = 0;
+            if (eventType === "tiros_rojo") {
+              score = vividRedCount * 10.0;
+            } else if (eventType === "booyah") {
+              score = goldCount * 5.0;
+            } else if (eventType === "squad_wipes" || eventType === "highlights") {
+              score = (vividRedCount * 8.0) + (goldCount * 2.0);
+            } else {
+              score = vividRedCount * 5.0;
+            }
+
+            scoredSamples.push({ time, score, vividRedCount });
           } catch (e) {
-            scoredSamples.push({ time, score: Math.random() * 5 });
+            scoredSamples.push({ time, score: 0, vividRedCount: 0 });
           }
 
           const pct = 5 + Math.floor((i / totalSamples) * 35);
           progressBar.style.width = pct + "%";
         }
 
-        scoredSamples.sort((a, b) => b.score - a.score);
+        // Filtrar aquellos momentos con impacto de tiro rojo claro (score > 15)
+        const trueHeadshotPeaks = scoredSamples.filter(s => s.score > 15).sort((a, b) => b.score - a.score);
 
         const selectedClips = [];
         
-        for (const sample of scoredSamples) {
+        // 1. Priorizar las mejores jugadas de Headshot real
+        for (const sample of trueHeadshotPeaks) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
-          const overlaps = selectedClips.some(c => Math.abs(t - c.start) < clipDur);
+          const overlaps = selectedClips.some(c => Math.abs(t - c.peakTime) < (clipDur * 0.8));
           if (!overlaps) {
-            const start = Math.max(0, t - 1.0);
+            // Centrar el clip para que el tiro rojo ocurra justo en el centro del clip (t - 1.2s a t + 1.8s)
+            const start = Math.max(0, t - 1.2);
             const end = Math.min(dur, start + clipDur);
-            selectedClips.push({ start, end });
+            selectedClips.push({ start, end, peakTime: t, isTrueHeadshot: true });
           }
         }
 
+        // 2. Si faltan clips para completar la cantidad solicitada (ej. pidió 5 clips), tomar los siguientes mejores momentos de acción
         if (selectedClips.length < maxClips) {
-          const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
-          for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
-            const t = Math.min(dur - clipDur, i * stepSize);
-            const overlaps = selectedClips.some(c => Math.abs(t - c.start) < clipDur);
+          const allSorted = scoredSamples.slice().sort((a, b) => b.score - a.score);
+          for (const sample of allSorted) {
+            if (selectedClips.length >= maxClips) break;
+            const t = sample.time;
+            const overlaps = selectedClips.some(c => Math.abs(t - c.peakTime) < (clipDur * 0.8));
             if (!overlaps) {
-              selectedClips.push({ start: Math.max(0, t), end: Math.min(dur, t + clipDur) });
+              const start = Math.max(0, t - 1.2);
+              const end = Math.min(dur, start + clipDur);
+              selectedClips.push({ start, end, peakTime: t, isTrueHeadshot: sample.score > 15 });
             }
           }
         }
@@ -882,7 +907,7 @@
         return selectedClips;
       }
 
-      // GRABAR 1 CLIP INDIVIDUAL CON PISTA DE VIDEO + PISTA DE AUDIO ORIGINAL PRESERVADA
+      // GRABAR 1 CLIP INDIVIDUAL CON PISTA DE VIDEO HD + AUDIO ORIGINAL
       function recordSingleClipBlobWithAudio(clip, aspectRatio) {
         return new Promise((resolve) => {
           let outW = 1080, outH = 1920;
@@ -892,11 +917,9 @@
           procCanvas.width = outW;
           procCanvas.height = outH;
 
-          // CAPTURAR PISTA DE VIDEO HD
           const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
           let tracks = [videoTrack];
 
-          // CAPTURAR Y CONECTAR PISTA DE AUDIO ORIGINAL
           if (audioDestNode && audioDestNode.stream && audioDestNode.stream.getAudioTracks().length > 0) {
             tracks.push(audioDestNode.stream.getAudioTracks()[0]);
           }
@@ -950,7 +973,7 @@
                 sX = (vW - sW) / 2;
               } else {
                 sH = vW / targetAspect;
-                sY = (vH - sY) / 2;
+                sY = (vH - sH) / 2;
               }
 
               ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
