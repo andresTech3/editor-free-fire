@@ -1,4 +1,4 @@
-// Free Fire Clip Extractor — Mobile PWA App JS
+// Free Fire Clip Extractor — Mobile PWA App JS (v2.0 Fixed)
 
 document.addEventListener("DOMContentLoaded", () => {
   // Elementos UI
@@ -30,35 +30,70 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedFile = null;
   let videoDurSec = 0;
 
-  // Actualizar Sliders
-  inputMaxClips.addEventListener("input", () => {
-    valClips.textContent = `${inputMaxClips.value} clips`;
-  });
-  inputClipDur.addEventListener("input", () => {
-    valDur.textContent = `${parseFloat(inputClipDur.value).toFixed(1)} seg`;
+  // ── FIX 1: CLICK EN ÁREA DE CARGA DE VIDEO ───────────────────────────────
+  uploadArea.addEventListener("click", (e) => {
+    if (e.target !== videoInput) {
+      videoInput.click();
+    }
   });
 
-  // Selector de Tarjetas de Eventos
-  document.querySelectorAll(".event-card").forEach(card => {
-    card.addEventListener("click", () => {
+  // ── FIX 2: ACTUALIZACIÓN INSTANTÁNEA DE SLIDERS (INPUT + CHANGE) ─────────
+  function updateSliderValues() {
+    if (valClips && inputMaxClips) {
+      valClips.textContent = `${inputMaxClips.value} clips`;
+    }
+    if (valDur && inputClipDur) {
+      valDur.textContent = `${parseFloat(inputClipDur.value).toFixed(1)} seg`;
+    }
+  }
+
+  ["input", "change"].forEach(evtName => {
+    inputMaxClips.addEventListener(evtName, updateSliderValues);
+    inputClipDur.addEventListener(evtName, updateSliderValues);
+  });
+  updateSliderValues(); // inicializar
+
+  // ── FIX 3: SELECCIÓN DE TARJETAS DE EVENTOS ──────────────────────────────
+  const eventRadios = document.querySelectorAll('input[name="eventType"]');
+  eventRadios.forEach(radio => {
+    radio.addEventListener("change", () => {
       document.querySelectorAll(".event-card").forEach(c => c.classList.remove("active"));
-      card.classList.add("active");
-      const radio = card.querySelector('input[type="radio"]');
-      if (radio) radio.checked = true;
+      const card = radio.closest(".event-card");
+      if (card) card.classList.add("active");
     });
   });
 
-  // Selector de Formato (Aspect Ratio)
+  document.querySelectorAll(".event-card").forEach(card => {
+    card.addEventListener("click", (e) => {
+      const radio = card.querySelector('input[type="radio"]');
+      if (radio && !radio.checked) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  // ── FIX 4: SELECCIÓN DE FORMATO (ASPECT RATIO) ───────────────────────────
+  const formatRadios = document.querySelectorAll('input[name="aspectRatio"]');
+  formatRadios.forEach(radio => {
+    radio.addEventListener("change", () => {
+      document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
+      const btn = radio.closest(".fmt-btn");
+      if (btn) btn.classList.add("active");
+    });
+  });
+
   document.querySelectorAll(".fmt-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
       const radio = btn.querySelector('input[type="radio"]');
-      if (radio) radio.checked = true;
+      if (radio && !radio.checked) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event("change"));
+      }
     });
   });
 
-  // Cargar Video de la Galería
+  // ── CARGAR VIDEO DESDE GALERÍA ───────────────────────────────────────────
   videoInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -78,12 +113,15 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   });
 
-  // BOTÓN GENERAR
+  // ── BOTÓN GENERAR RECOPILACIÓN ──────────────────────────────────────────
   btnProcess.addEventListener("click", async () => {
     if (!selectedFile || videoDurSec <= 0) return;
 
-    const eventType = document.querySelector('input[name="eventType"]:checked').value;
-    const aspectRatio = document.querySelector('input[name="aspectRatio"]:checked').value;
+    const eventRadio = document.querySelector('input[name="eventType"]:checked');
+    const aspectRadio = document.querySelector('input[name="aspectRatio"]:checked');
+    
+    const eventType = eventRadio ? eventRadio.value : "tiros_rojo";
+    const aspectRatio = aspectRadio ? aspectRadio.value : "9:16";
     const maxClips = parseInt(inputMaxClips.value);
     const clipDur = parseFloat(inputClipDur.value);
 
@@ -98,13 +136,11 @@ document.addEventListener("DOMContentLoaded", () => {
     resultCard.scrollIntoView({ behavior: "smooth" });
 
     try {
-      // 1. Escanear gameplay y detectar clips
       const clips = await scanVideoEvents(eventType, maxClips, clipDur);
       
       progressBar.style.width = "40%";
       statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando video final...`;
 
-      // 2. Renderizar y exportar clips unidos
       const compiledBlob = await renderCompiledVideo(clips, aspectRatio);
 
       progressBar.style.width = "100%";
@@ -128,9 +164,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Algoritmo de Escaneo de Cuadros por Evento
+  // ── ALGORITMO DE ESCANEO DE CUADROS POR EVENTO ───────────────────────────
   async function scanVideoEvents(eventType, maxClips, clipDur) {
-    const sampleStep = 0.5; // analizar cada 0.5s
+    const sampleStep = 0.5;
     const totalSamples = Math.floor(videoDurSec / sampleStep);
     const scoredSamples = [];
 
@@ -142,7 +178,6 @@ document.addEventListener("DOMContentLoaded", () => {
         sourceVideo.onseeked = resolve;
       });
 
-      // Dibujar en Canvas para análisis RGB
       procCanvas.width = 160;
       procCanvas.height = 280;
       ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
@@ -151,15 +186,12 @@ document.addEventListener("DOMContentLoaded", () => {
       let redCount = 0;
       let goldCount = 0;
 
-      // Escanear píxeles
       for (let p = 0; p < frameData.length; p += 4) {
         const r = frameData[p];
         const g = frameData[p + 1];
         const b = frameData[p + 2];
 
-        // Disparos Rojos (Red damage numbers): R alto, G bajo, B bajo
         if (r > 190 && g < 40 && b < 40) redCount++;
-        // BOOYAH banner (Dorado/Amarillo): R alto, G alto, B bajo
         if (r > 200 && g > 170 && b < 50) goldCount++;
       }
 
@@ -178,7 +210,6 @@ document.addEventListener("DOMContentLoaded", () => {
       progressBar.style.width = `${pct}%`;
     }
 
-    // Ordenar por score y seleccionar mejores clips
     scoredSamples.sort((a, b) => b.score - a.score);
 
     const selectedClips = [];
@@ -195,12 +226,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // Ordenar cronológicamente
     selectedClips.sort((a, b) => a.start - b.start);
     return selectedClips;
   }
 
-  // Renderizar y concatenar clips en un Blob de Video
+  // ── RENDER Y CONCATENACIÓN DE CLIPS (CANVAS + MEDIARECORDER) ─────────────
   function renderCompiledVideo(clips, aspectRatio) {
     return new Promise((resolve, reject) => {
       let outW = 1080, outH = 1920;
@@ -255,7 +285,6 @@ document.addEventListener("DOMContentLoaded", () => {
               return;
             }
 
-            // Dibujar frame ajustado al aspect ratio
             ctx.drawImage(sourceVideo, 0, 0, outW, outH);
             requestAnimationFrame(drawFrame);
           }
