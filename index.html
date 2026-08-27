@@ -375,38 +375,77 @@
       transition: width 0.2s ease;
     }
 
-    .preview-container {
+    /* N CLIPS INDIVIDUALES Y UNIFICACIÓN */
+    .btn-unify {
+      background: linear-gradient(135deg, #00f0ff, #0088ff);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 18px rgba(0, 240, 255, 0.4);
+      width: 100%;
+    }
+
+    .clips-grid {
       display: flex;
       flex-direction: column;
+      gap: 16px;
+    }
+
+    .clip-card {
+      background: #111122;
+      border: 1px solid #252545;
+      border-radius: 14px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .clip-card-header {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      justify-content: center;
-      width: 100%;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--accent-gold);
     }
 
-    .video-preview {
+    .clip-card video {
       width: 100%;
-      max-width: 270px;
-      height: 480px;
-      border-radius: 16px;
+      max-height: 360px;
+      border-radius: 10px;
       background: #000;
-      border: 2px solid var(--accent-red);
       object-fit: cover;
-      box-shadow: 0 8px 30px rgba(255, 0, 85, 0.3);
     }
 
-    .btn-download {
+    .btn-download-clip {
       display: block;
-      width: 100%;
       background: #00aa66;
       color: #fff;
       text-decoration: none;
       text-align: center;
-      padding: 16px;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 900;
-      margin-top: 14px;
-      box-shadow: 0 4px 16px rgba(0, 170, 102, 0.4);
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 4px 12px rgba(0, 170, 102, 0.3);
+    }
+
+    .unified-box {
+      background: rgba(0, 240, 255, 0.08);
+      border: 1px dashed var(--accent-cyan);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
     }
 
     .app-footer {
@@ -576,13 +615,13 @@
 
     <!-- ACTION BUTTON -->
     <button id="btnProcess" class="btn-action" disabled>
-      🚀 GENERAR RECOPILACIÓN AHORA
+      🚀 EXTRAER CLIPS INDIVIDUALES AHORA
     </button>
 
     <!-- PROGRESS & RESULT CARD -->
     <section id="resultCard" class="card result-card" style="display: none;">
       <div class="card-header">
-        <h2>🎬 Resultado de la Recopilación</h2>
+        <h2>🎬 Resultados Extraídos</h2>
       </div>
 
       <div class="progress-box" id="progressBox">
@@ -593,11 +632,25 @@
         </div>
       </div>
 
-      <div id="videoResultBox" class="preview-container" style="display: none;">
-        <video id="resultVideo" controls playsinline class="video-preview"></video>
-        <a id="btnDownload" class="btn-download" download="recopilacion_freefire.mp4">
-          ⬇️ Descargar Video a tu Galería
-        </a>
+      <div id="videoResultContainer" style="display: none;">
+        
+        <!-- BOTÓN PARA UNIFICAR TODOS LOS CLIPS -->
+        <button id="btnUnifyAll" class="btn-unify">
+          ⚡ UNIFICAR TODOS LOS CLIPS EN 1 SOLO VIDEO COMPLETO
+        </button>
+
+        <!-- SECCIÓN DE VIDEO UNIFICADO (OCULTA POR DEFECTO HASTA DAR CLIC) -->
+        <div id="unifiedBox" class="unified-box" style="display: none;">
+          <h3 style="color: var(--accent-cyan); font-size: 14px;">🎬 Video Unificado Completo</h3>
+          <video id="unifiedVideo" controls playsinline style="width: 100%; max-height: 400px; border-radius: 12px; background: #000; object-fit: cover;"></video>
+          <a id="btnDownloadUnified" class="btn-download-clip" style="width: 100%; background: #0088ff;" download="recopilacion_unificada.mp4">
+            ⬇️ Descargar Video Unificado Completo
+          </a>
+        </div>
+
+        <!-- LISTA DE CLIPS INDIVIDUALES -->
+        <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--accent-gold);">✂️ Clips Extraídos por Separado:</h3>
+        <div id="clipsGrid" class="clips-grid"></div>
       </div>
     </section>
 
@@ -631,9 +684,12 @@
       const progressBox = document.getElementById("progressBox");
       const statusText = document.getElementById("statusText");
       const progressBar = document.getElementById("progressBar");
-      const videoResultBox = document.getElementById("videoResultBox");
-      const resultVideo = document.getElementById("resultVideo");
-      const btnDownload = document.getElementById("btnDownload");
+      const videoResultContainer = document.getElementById("videoResultContainer");
+      const clipsGrid = document.getElementById("clipsGrid");
+      const btnUnifyAll = document.getElementById("btnUnifyAll");
+      const unifiedBox = document.getElementById("unifiedBox");
+      const unifiedVideo = document.getElementById("unifiedVideo");
+      const btnDownloadUnified = document.getElementById("btnDownloadUnified");
 
       const sourceVideo = document.getElementById("sourceVideo");
       const procCanvas = document.getElementById("procCanvas");
@@ -644,6 +700,8 @@
       let audioCtx = null;
       let audioSourceNode = null;
       let audioDestNode = null;
+      let generatedClips = [];
+      let currentAspectRatio = "9:16";
 
       // ── SLIDERS ──────────────────────────────────────────────────────────
       function updateSliders() {
@@ -657,7 +715,7 @@
       });
       updateSliders();
 
-      // ── TARJETAS DE EVENTO & FORMATO ────────────────────────────────────
+      // ── SELECCIÓN DE EVENTOS & FORMATO ────────────────────────────────────
       document.querySelectorAll('input[name="eventType"]').forEach(radio => {
         radio.addEventListener("change", () => {
           document.querySelectorAll(".event-card").forEach(c => c.classList.remove("active"));
@@ -671,22 +729,10 @@
           document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
           const btn = radio.closest(".fmt-btn");
           if (btn) btn.classList.add("active");
-
-          const fmt = radio.value;
-          if (fmt === "16:9") {
-            resultVideo.style.maxWidth = "100%";
-            resultVideo.style.height = "240px";
-          } else if (fmt === "1:1") {
-            resultVideo.style.maxWidth = "320px";
-            resultVideo.style.height = "320px";
-          } else { // 9:16
-            resultVideo.style.maxWidth = "270px";
-            resultVideo.style.height = "480px";
-          }
         });
       });
 
-      // ── CARGAR VIDEO ─────────────────────────────────────────────────────
+      // ── CARGAR VIDEO DE GALERÍA ───────────────────────────────────────────
       videoInput.addEventListener("change", (e) => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
@@ -722,7 +768,7 @@
         sourceVideo.load();
       });
 
-      // ── GENERAR RECOPILACIÓN MULTI-CLIP UNIFICADA ─────────────────────────
+      // ── BOTÓN: EXTRAER CLIPS INDIVIDUALES ─────────────────────────────────
       btnProcess.addEventListener("click", async () => {
         if (!selectedFile) {
           alert("Por favor elige un video de tu galería primero.");
@@ -733,16 +779,18 @@
         const aspectRadio = document.querySelector('input[name="aspectRatio"]:checked');
         
         const eventType = eventRadio ? eventRadio.value : "tiros_rojo";
-        const aspectRatio = aspectRadio ? aspectRadio.value : "9:16";
+        currentAspectRatio = aspectRadio ? aspectRadio.value : "9:16";
         const maxClips = parseInt(inputMaxClips.value);
         const clipDur = parseFloat(inputClipDur.value);
 
         btnProcess.disabled = true;
         resultCard.style.display = "block";
         progressBox.style.display = "flex";
-        videoResultBox.style.display = "none";
+        videoResultContainer.style.display = "none";
+        unifiedBox.style.display = "none";
+        clipsGrid.innerHTML = "";
         progressBar.style.width = "5%";
-        statusText.textContent = `Buscando las ${maxClips} mejores jugadas en el gameplay...`;
+        statusText.textContent = `Analizando el gameplay para extraer los ${maxClips} clips...`;
 
         resultCard.scrollIntoView({ behavior: "smooth" });
 
@@ -761,33 +809,77 @@
             console.log("Audio Context Note:", ae);
           }
 
-          // 1. Escanear gameplay y obtener exactamente los N clips
-          const clips = await scanVideoEvents(eventType, maxClips, clipDur);
+          // 1. Escanear y obtener timestamps de los N clips
+          generatedClips = await scanVideoEvents(eventType, maxClips, clipDur);
           
-          progressBar.style.width = "40%";
-          statusText.textContent = `Grabando los ${clips.length} clips en 1 solo stream de video (${(clips.length * clipDur).toFixed(0)} segundos totales)...`;
+          // 2. Procesar cada clip por separado para descarga individual
+          for (let i = 0; i < generatedClips.length; i++) {
+            const clip = generatedClips[i];
+            const pct = 40 + Math.floor(((i + 1) / generatedClips.length) * 55);
+            progressBar.style.width = pct + "%";
+            statusText.textContent = `Generando Clip ${i + 1} de ${generatedClips.length}...`;
 
-          // 2. Grabar los N clips en UN SOLO SESIÓN DE MEDIARECORDER CONTINUA (1 solo encabezado WebM)
-          const compiledBlob = await recordContinuousStream(clips, aspectRatio);
+            const clipBlob = await recordSingleClipBlob(clip, currentAspectRatio);
+            const clipUrl = URL.createObjectURL(clipBlob);
+
+            // Crear tarjeta de clip en el UI
+            const cardEl = document.createElement("div");
+            cardEl.className = "clip-card";
+            cardEl.innerHTML = `
+              <div class="clip-card-header">
+                <span>🔴 Clip #${i + 1}</span>
+                <span>⏱️ ${(clip.end - clip.start).toFixed(1)}s (${clip.start.toFixed(1)}s ➔ ${clip.end.toFixed(1)}s)</span>
+              </div>
+              <video src="${clipUrl}" controls playsinline></video>
+              <a href="${clipUrl}" download="clip_${i + 1}_${eventType}.mp4" class="btn-download-clip">
+                ⬇️ Descargar Clip #${i + 1}
+              </a>
+            `;
+            clipsGrid.appendChild(cardEl);
+          }
 
           progressBar.style.width = "100%";
-          statusText.textContent = `¡Video unificado de ${clips.length} clips (${(clips.length * clipDur).toFixed(0)}s) completado con éxito!`;
+          statusText.textContent = `¡Se extrajeron los ${generatedClips.length} clips individualmente!`;
 
           setTimeout(() => {
             progressBox.style.display = "none";
-            videoResultBox.style.display = "flex";
-
-            const compiledUrl = URL.createObjectURL(compiledBlob);
-            resultVideo.src = compiledUrl;
-            btnDownload.href = compiledUrl;
-            btnDownload.download = `recopilacion_${eventType}_${clips.length}clips_${aspectRatio.replace(":", "x")}.mp4`;
+            videoResultContainer.style.display = "block";
             btnProcess.disabled = false;
           }, 500);
 
         } catch (err) {
           console.error(err);
-          statusText.textContent = "❌ Error unificando el video: " + (err.message || "error desconocido");
+          statusText.textContent = "❌ Error procesando los clips: " + (err.message || "error desconocido");
           btnProcess.disabled = false;
+        }
+      });
+
+      // ── BOTÓN: UNIFICAR TODOS LOS CLIPS EN 1 SOLO VIDEO ──────────────────
+      btnUnifyAll.addEventListener("click", async () => {
+        if (!generatedClips || generatedClips.length === 0) return;
+
+        btnUnifyAll.disabled = true;
+        progressBox.style.display = "flex";
+        progressBar.style.width = "10%";
+        statusText.textContent = `Unificando los ${generatedClips.length} clips en 1 solo video continuo...`;
+
+        try {
+          const unifiedBlob = await recordContinuousStream(generatedClips, currentAspectRatio);
+          const unifiedUrl = URL.createObjectURL(unifiedBlob);
+
+          unifiedVideo.src = unifiedUrl;
+          btnDownloadUnified.href = unifiedUrl;
+          btnDownloadUnified.download = `recopilacion_unificada_${generatedClips.length}clips.mp4`;
+
+          progressBox.style.display = "none";
+          unifiedBox.style.display = "flex";
+          btnUnifyAll.disabled = false;
+          unifiedBox.scrollIntoView({ behavior: "smooth" });
+
+        } catch (err) {
+          console.error(err);
+          statusText.textContent = "❌ Error unificando: " + (err.message || "error");
+          btnUnifyAll.disabled = false;
         }
       });
 
@@ -838,7 +930,6 @@
 
         const selectedClips = [];
         
-        // 1. Filtrar clips sin solaparse
         for (const sample of scoredSamples) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
@@ -850,7 +941,6 @@
           }
         }
 
-        // 2. Garantizar que NUNCA falten clips hasta llegar exactamente a N (ej: si pidió 5, dará 5 clips)
         if (selectedClips.length < maxClips) {
           const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
           for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
@@ -866,7 +956,76 @@
         return selectedClips;
       }
 
-      // ── BUCLE DE GRABACIÓN ÚNICA CONTINUA (SINGLE WEBM HEADER - FULL DURATION) ──
+      // GRABAR 1 CLIP INDIVIDUAL LIMPIO
+      function recordSingleClipBlob(clip, aspectRatio) {
+        return new Promise((resolve) => {
+          let outW = 1080, outH = 1920;
+          if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
+          else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
+
+          procCanvas.width = outW;
+          procCanvas.height = outH;
+
+          const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
+          let tracks = [videoTrack];
+          if (audioDestNode && audioDestNode.stream && audioDestNode.stream.getAudioTracks().length > 0) {
+            tracks.push(audioDestNode.stream.getAudioTracks()[0]);
+          }
+
+          let mime = "video/webm;codecs=vp8";
+          if (MediaRecorder.isTypeSupported("video/mp4")) mime = "video/mp4";
+
+          const stream = new MediaStream(tracks);
+          const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+          const chunks = [];
+
+          recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+          recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
+
+          sourceVideo.currentTime = clip.start;
+          sourceVideo.muted = false;
+
+          const startRec = () => {
+            recorder.start(50);
+            sourceVideo.play().catch(() => {});
+
+            const clipStart = Date.now();
+            const durMs = (clip.end - clip.start) * 1000;
+
+            function draw() {
+              const elapsed = Date.now() - clipStart;
+              if (elapsed >= durMs) {
+                sourceVideo.pause();
+                recorder.stop();
+                return;
+              }
+
+              const vW = sourceVideo.videoWidth || 1920;
+              const vH = sourceVideo.videoHeight || 1080;
+              const vAspect = vW / vH;
+              const targetAspect = outW / outH;
+
+              let sW = vW, sH = vH, sX = 0, sY = 0;
+              if (vAspect > targetAspect) {
+                sW = vH * targetAspect;
+                sX = (vW - sW) / 2;
+              } else {
+                sH = vW / targetAspect;
+                sY = (vH - sH) / 2;
+              }
+
+              ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
+              requestAnimationFrame(draw);
+            }
+            draw();
+          };
+
+          sourceVideo.onseeked = startRec;
+          setTimeout(startRec, 100);
+        });
+      }
+
+      // GRABAR BUCLE CONTINUO UNIFICADO DE TODOS LOS CLIPS
       function recordContinuousStream(clips, aspectRatio) {
         return new Promise((resolve) => {
           let outW = 1080, outH = 1920;
@@ -878,7 +1037,6 @@
 
           const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
           let tracks = [videoTrack];
-          
           if (audioDestNode && audioDestNode.stream && audioDestNode.stream.getAudioTracks().length > 0) {
             tracks.push(audioDestNode.stream.getAudioTracks()[0]);
           }
@@ -886,25 +1044,13 @@
           const stream = new MediaStream(tracks);
 
           let mime = "video/webm;codecs=vp8";
-          if (MediaRecorder.isTypeSupported("video/mp4")) {
-            mime = "video/mp4";
-          } else if (MediaRecorder.isTypeSupported("video/webm;codecs=h264")) {
-            mime = "video/webm;codecs=h264";
-          }
+          if (MediaRecorder.isTypeSupported("video/mp4")) mime = "video/mp4";
 
-          const recorder = new MediaRecorder(stream, { 
-            mimeType: mime,
-            videoBitsPerSecond: 6000000 
-          });
-
+          const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
           const chunks = [];
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = () => {
-            const finalBlob = new Blob(chunks, { type: mime });
-            resolve(finalBlob);
-          };
+          recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
 
-          // Iniciar la sesión de grabación ÚNICA una sola vez
           recorder.start(100);
           sourceVideo.muted = false;
           sourceVideo.playbackRate = 1.0;
@@ -919,11 +1065,6 @@
             }
 
             const currentClip = clips[currentClipIndex];
-            
-            const pct = 40 + Math.floor(((currentClipIndex + 1) / clips.length) * 55);
-            progressBar.style.width = pct + "%";
-            statusText.textContent = `Grabando clip ${currentClipIndex + 1} de ${clips.length}...`;
-
             sourceVideo.currentTime = currentClip.start;
 
             const startClipPlayback = () => {
@@ -937,11 +1078,10 @@
                 if (elapsed >= targetDurationMs) {
                   sourceVideo.pause();
                   currentClipIndex++;
-                  playNextClipInStream(); // Pasa al siguiente clip DENTRO DE LA MISMA SESIÓN DE GRABACIÓN
+                  playNextClipInStream();
                   return;
                 }
 
-                // CROP HD CENTRADO 9:16 VERTICAL PROPORCIONAL
                 const vW = sourceVideo.videoWidth || 1920;
                 const vH = sourceVideo.videoHeight || 1080;
                 const vAspect = vW / vH;
