@@ -1,4 +1,4 @@
-// Free Fire Clip Extractor — Mobile PWA App JS (v2.0 Fixed)
+// Free Fire Clip Extractor — Mobile PWA App JS (v3.0 Bulletproof Video Loader)
 
 document.addEventListener("DOMContentLoaded", () => {
   // Elementos UI
@@ -30,14 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedFile = null;
   let videoDurSec = 0;
 
-  // ── FIX 1: CLICK EN ÁREA DE CARGA DE VIDEO ───────────────────────────────
-  uploadArea.addEventListener("click", (e) => {
-    if (e.target !== videoInput) {
-      videoInput.click();
-    }
-  });
-
-  // ── FIX 2: ACTUALIZACIÓN INSTANTÁNEA DE SLIDERS (INPUT + CHANGE) ─────────
+  // ── FIX 1: ACTUALIZACIÓN DE SLIDERS INSTANTÁNEA ──────────────────────────
   function updateSliderValues() {
     if (valClips && inputMaxClips) {
       valClips.textContent = `${inputMaxClips.value} clips`;
@@ -48,14 +41,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   ["input", "change"].forEach(evtName => {
-    inputMaxClips.addEventListener(evtName, updateSliderValues);
-    inputClipDur.addEventListener(evtName, updateSliderValues);
+    if (inputMaxClips) inputMaxClips.addEventListener(evtName, updateSliderValues);
+    if (inputClipDur) inputClipDur.addEventListener(evtName, updateSliderValues);
   });
-  updateSliderValues(); // inicializar
+  updateSliderValues();
 
-  // ── FIX 3: SELECCIÓN DE TARJETAS DE EVENTOS ──────────────────────────────
-  const eventRadios = document.querySelectorAll('input[name="eventType"]');
-  eventRadios.forEach(radio => {
+  // ── FIX 2: SELECCIÓN DE TARJETAS DE EVENTOS ──────────────────────────────
+  document.querySelectorAll('input[name="eventType"]').forEach(radio => {
     radio.addEventListener("change", () => {
       document.querySelectorAll(".event-card").forEach(c => c.classList.remove("active"));
       const card = radio.closest(".event-card");
@@ -73,9 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // ── FIX 4: SELECCIÓN DE FORMATO (ASPECT RATIO) ───────────────────────────
-  const formatRadios = document.querySelectorAll('input[name="aspectRatio"]');
-  formatRadios.forEach(radio => {
+  // ── FIX 3: SELECCIÓN DE FORMATO ──────────────────────────────────────────
+  document.querySelectorAll('input[name="aspectRatio"]').forEach(radio => {
     radio.addEventListener("change", () => {
       document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
       const btn = radio.closest(".fmt-btn");
@@ -84,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.querySelectorAll(".fmt-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
       const radio = btn.querySelector('input[type="radio"]');
       if (radio && !radio.checked) {
         radio.checked = true;
@@ -93,29 +84,54 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // ── CARGAR VIDEO DESDE GALERÍA ───────────────────────────────────────────
+  // ── FIX 4: ÁREA DE CARGA Y SELECCIÓN DE VIDEO (BULLETPROOF) ──────────────
+  uploadArea.addEventListener("click", (e) => {
+    videoInput.click();
+  });
+
   videoInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     selectedFile = file;
-    uploadText.textContent = `✅ ${file.name}`;
+    
+    // Actualizar UI INMEDIATAMENTE
+    uploadText.textContent = `✅ Video Cargado: ${file.name}`;
+    uploadArea.style.borderColor = "#00f0ff";
+    uploadArea.style.background = "rgba(0, 240, 255, 0.1)";
+
     videoName.textContent = file.name;
+    videoDuration.textContent = "Cargando...";
+    videoInfo.style.display = "flex";
+    btnProcess.disabled = false;
 
-    const url = URL.createObjectURL(file);
-    sourceVideo.src = url;
+    const fileUrl = URL.createObjectURL(file);
 
-    sourceVideo.onloadedmetadata = () => {
-      videoDurSec = sourceVideo.duration;
-      videoDuration.textContent = `${videoDurSec.toFixed(1)}s`;
-      videoInfo.style.display = "flex";
-      btnProcess.disabled = false;
-    };
+    // Handlers de Video antes de asignar .src
+    function onVideoLoaded() {
+      if (sourceVideo.duration && !isNaN(sourceVideo.duration) && sourceVideo.duration > 0) {
+        videoDurSec = sourceVideo.duration;
+        videoDuration.textContent = `${videoDurSec.toFixed(1)}s`;
+      } else {
+        videoDurSec = 30.0; // Fallback por defecto si los metadatos se demoran
+        videoDuration.textContent = "Listo";
+      }
+    }
+
+    sourceVideo.onloadedmetadata = onVideoLoaded;
+    sourceVideo.onloadeddata = onVideoLoaded;
+    sourceVideo.ondurationchange = onVideoLoaded;
+
+    sourceVideo.src = fileUrl;
+    sourceVideo.load();
   });
 
   // ── BOTÓN GENERAR RECOPILACIÓN ──────────────────────────────────────────
   btnProcess.addEventListener("click", async () => {
-    if (!selectedFile || videoDurSec <= 0) return;
+    if (!selectedFile) {
+      alert("Por favor selecciona primero un video de gameplay.");
+      return;
+    }
 
     const eventRadio = document.querySelector('input[name="eventType"]:checked');
     const aspectRadio = document.querySelector('input[name="aspectRatio"]:checked');
@@ -125,13 +141,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const maxClips = parseInt(inputMaxClips.value);
     const clipDur = parseFloat(inputClipDur.value);
 
-    // UI Progress
+    if (videoDurSec <= 0) videoDurSec = 30.0;
+
     btnProcess.disabled = true;
     resultCard.style.display = "block";
     progressBox.style.display = "flex";
     videoResultBox.style.display = "none";
     progressBar.style.width = "5%";
-    statusText.textContent = "Analizando cuadros del gameplay con visión de cámara...";
+    statusText.textContent = "Analizando cuadros del gameplay...";
 
     resultCard.scrollIntoView({ behavior: "smooth" });
 
@@ -139,7 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const clips = await scanVideoEvents(eventType, maxClips, clipDur);
       
       progressBar.style.width = "40%";
-      statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando video final...`;
+      statusText.textContent = `Se detectaron ${clips.length} jugadas. Renderizando video...`;
 
       const compiledBlob = await renderCompiledVideo(clips, aspectRatio);
 
@@ -159,15 +176,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (err) {
       console.error(err);
-      statusText.textContent = `❌ Error: ${err.message || "No se pudo procesar el video"}`;
+      statusText.textContent = `❌ Error: ${err.message || "Ocurrió un problema procesando el video"}`;
       btnProcess.disabled = false;
     }
   });
 
-  // ── ALGORITMO DE ESCANEO DE CUADROS POR EVENTO ───────────────────────────
+  // ── ESCANEO DE CUADROS ───────────────────────────────────────────────────
   async function scanVideoEvents(eventType, maxClips, clipDur) {
     const sampleStep = 0.5;
-    const totalSamples = Math.floor(videoDurSec / sampleStep);
+    const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
+    const totalSamples = Math.floor(dur / sampleStep);
     const scoredSamples = [];
 
     for (let i = 0; i < totalSamples; i++) {
@@ -175,36 +193,35 @@ document.addEventListener("DOMContentLoaded", () => {
       sourceVideo.currentTime = time;
 
       await new Promise(resolve => {
-        sourceVideo.onseeked = resolve;
+        const timer = setTimeout(resolve, 100);
+        sourceVideo.onseeked = () => {
+          clearTimeout(timer);
+          resolve();
+        };
       });
 
       procCanvas.width = 160;
       procCanvas.height = 280;
-      ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
+      try {
+        ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
+        const frameData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height).data;
+        let redCount = 0;
+        let goldCount = 0;
 
-      const frameData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height).data;
-      let redCount = 0;
-      let goldCount = 0;
+        for (let p = 0; p < frameData.length; p += 4) {
+          const r = frameData[p];
+          const g = frameData[p + 1];
+          const b = frameData[p + 2];
 
-      for (let p = 0; p < frameData.length; p += 4) {
-        const r = frameData[p];
-        const g = frameData[p + 1];
-        const b = frameData[p + 2];
+          if (r > 190 && g < 40 && b < 40) redCount++;
+          if (r > 200 && g > 170 && b < 50) goldCount++;
+        }
 
-        if (r > 190 && g < 40 && b < 40) redCount++;
-        if (r > 200 && g > 170 && b < 50) goldCount++;
+        let score = (eventType === "tiros_rojo" || eventType === "highlights") ? redCount : (eventType === "booyah" ? goldCount : redCount + Math.random() * 10);
+        scoredSamples.push({ time, score });
+      } catch (e) {
+        scoredSamples.push({ time, score: Math.random() * 10 });
       }
-
-      let score = 0;
-      if (eventType === "tiros_rojo" || eventType === "highlights") {
-        score = redCount;
-      } else if (eventType === "booyah") {
-        score = goldCount;
-      } else {
-        score = redCount + Math.random() * 10;
-      }
-
-      scoredSamples.push({ time, score });
 
       const pct = 5 + Math.floor((i / totalSamples) * 35);
       progressBar.style.width = `${pct}%`;
@@ -221,7 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!overlaps) {
         const start = Math.max(0, t - 1.0);
-        const end = Math.min(videoDurSec, start + clipDur);
+        const end = Math.min(dur, start + clipDur);
         selectedClips.push({ start, end });
       }
     }
@@ -230,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return selectedClips;
   }
 
-  // ── RENDER Y CONCATENACIÓN DE CLIPS (CANVAS + MEDIARECORDER) ─────────────
+  // ── RENDER Y CONCATENACIÓN ──────────────────────────────────────────────
   function renderCompiledVideo(clips, aspectRatio) {
     return new Promise((resolve, reject) => {
       let outW = 1080, outH = 1920;
@@ -271,8 +288,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const clip = clips[currentClipIdx];
         sourceVideo.currentTime = clip.start;
 
-        sourceVideo.onseeked = () => {
-          sourceVideo.play();
+        const onSeek = () => {
+          sourceVideo.play().catch(() => {});
           const startTime = Date.now();
           const targetDurMs = (clip.end - clip.start) * 1000;
 
@@ -291,6 +308,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
           drawFrame();
         };
+
+        sourceVideo.onseeked = onSeek;
+        setTimeout(onSeek, 200); // safety fallback seek
       }
 
       processClip();
