@@ -375,7 +375,6 @@
       transition: width 0.2s ease;
     }
 
-    /* CONTENEDOR 9:16 VERTICAL CORREGIDO */
     .preview-container {
       display: flex;
       flex-direction: column;
@@ -388,7 +387,6 @@
       width: 100%;
       max-width: 270px;
       height: 480px;
-      aspect-ratio: 9/16;
       border-radius: 16px;
       background: #000;
       border: 2px solid var(--accent-red);
@@ -678,15 +676,12 @@
           if (fmt === "16:9") {
             resultVideo.style.maxWidth = "100%";
             resultVideo.style.height = "240px";
-            resultVideo.style.aspectRatio = "16/9";
           } else if (fmt === "1:1") {
             resultVideo.style.maxWidth = "320px";
             resultVideo.style.height = "320px";
-            resultVideo.style.aspectRatio = "1/1";
           } else { // 9:16
             resultVideo.style.maxWidth = "270px";
             resultVideo.style.height = "480px";
-            resultVideo.style.aspectRatio = "9/16";
           }
         });
       });
@@ -727,7 +722,7 @@
         sourceVideo.load();
       });
 
-      // ── GENERAR RECOPILACIÓN ─────────────────────────────────────────────
+      // ── GENERAR RECOPILACIÓN MULTI-CLIP UNIFICADA ─────────────────────────
       btnProcess.addEventListener("click", async () => {
         if (!selectedFile) {
           alert("Por favor elige un video de tu galería primero.");
@@ -747,7 +742,7 @@
         progressBox.style.display = "flex";
         videoResultBox.style.display = "none";
         progressBar.style.width = "5%";
-        statusText.textContent = "Analizando cuadros del gameplay para hallar los rojos...";
+        statusText.textContent = `Buscando las ${maxClips} mejores jugadas en el gameplay...`;
 
         resultCard.scrollIntoView({ behavior: "smooth" });
 
@@ -763,20 +758,20 @@
               await audioCtx.resume();
             }
           } catch (ae) {
-            console.log("Audio WebContext note:", ae);
+            console.log("Audio Context Note:", ae);
           }
 
-          // 1. Escanear gameplay y seleccionar exactamente los N clips
+          // 1. Escanear gameplay y obtener exactamente los N clips
           const clips = await scanVideoEvents(eventType, maxClips, clipDur);
           
           progressBar.style.width = "40%";
-          statusText.textContent = `Unificando los ${clips.length} clips en 1 solo video...`;
+          statusText.textContent = `Unificando los ${clips.length} clips en 1 solo video final...`;
 
-          // 2. Renderizar y unificar los N clips en 1 solo video continuo
-          const compiledBlob = await renderCompiledVideo(clips, aspectRatio, maxClips);
+          // 2. Grabar los N clips en Blobs separados y unificarlos en 1 solo video
+          const compiledBlob = await recordAndConcatenateClips(clips, aspectRatio);
 
           progressBar.style.width = "100%";
-          statusText.textContent = `¡Recopilación de ${clips.length} clips unificada con éxito!`;
+          statusText.textContent = `¡Video unificado con éxito (${clips.length} clips, ${(clips.length * clipDur).toFixed(0)} segundos en total)!`;
 
           setTimeout(() => {
             progressBox.style.display = "none";
@@ -785,7 +780,7 @@
             const compiledUrl = URL.createObjectURL(compiledBlob);
             resultVideo.src = compiledUrl;
             btnDownload.href = compiledUrl;
-            btnDownload.download = `recopilacion_${eventType}_${maxClips}clips_${aspectRatio.replace(":", "x")}.mp4`;
+            btnDownload.download = `recopilacion_${eventType}_${clips.length}clips.mp4`;
             btnProcess.disabled = false;
           }, 500);
 
@@ -796,10 +791,10 @@
         }
       });
 
-      // ── ESCANEAR PUNTOS DE EVENTO (ALGORITMO OPTIMIZADO PARA N CLIPS DE ROJO) ───
+      // ── DETECTOR INTELIGENTE DE PUNTOS ROJOS EN ZONA DE MIRA ──────────────
       async function scanVideoEvents(eventType, maxClips, clipDur) {
         const dur = (videoDurSec && videoDurSec > 0) ? videoDurSec : 30.0;
-        const sampleStep = 0.5;
+        const sampleStep = 0.4; // Muestreo cada 0.4s
         const totalSamples = Math.floor(dur / sampleStep);
         const scoredSamples = [];
 
@@ -816,7 +811,8 @@
           procCanvas.height = 280;
           try {
             ctx.drawImage(sourceVideo, 0, 0, procCanvas.width, procCanvas.height);
-            const frameData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height).data;
+            // Escanear cuadrante central (zona de mira en Free Fire)
+            const frameData = ctx.getImageData(30, 40, 100, 160).data;
             let redCount = 0;
             let goldCount = 0;
 
@@ -825,7 +821,7 @@
               const g = frameData[p + 1];
               const b = frameData[p + 2];
               
-              if (r > 130 && g < 100 && b < 100 && (r - g) > 40) redCount++;
+              if (r > 140 && g < 100 && b < 100 && (r - g) > 40) redCount++;
               if (r > 180 && g > 150 && b < 70) goldCount++;
             }
 
@@ -839,12 +835,12 @@
           progressBar.style.width = pct + "%";
         }
 
-        // Ordenar por mejores picos de score
+        // Ordenar de mayor a menor impacto
         scoredSamples.sort((a, b) => b.score - a.score);
 
         const selectedClips = [];
         
-        // 1. Filtrar clips sin solaparse
+        // 1. Tomar las mejores jugadas sin solaparse
         for (const sample of scoredSamples) {
           if (selectedClips.length >= maxClips) break;
           const t = sample.time;
@@ -856,7 +852,7 @@
           }
         }
 
-        // 2. Garantizar que NUNCA se quede en 1 solo clip si el usuario pidió N clips (ej: 5 clips)
+        // 2. Garantizar que NUNCA se quede en 1 solo clip si el usuario pidió N clips (ej: si pidió 5, dará 5 clips)
         if (selectedClips.length < maxClips) {
           const stepSize = Math.max(clipDur, (dur - clipDur) / Math.max(1, maxClips));
           for (let i = 0; i < maxClips && selectedClips.length < maxClips; i++) {
@@ -868,21 +864,46 @@
           }
         }
 
-        // Ordenar cronológicamente para la unificación continua
         selectedClips.sort((a, b) => a.start - b.start);
         return selectedClips;
       }
 
-      // ── BUCLE DE UNIFICACIÓN CONTINUA DE TODOS LOS N CLIPS EN 1 SOLO VIDEO ──
-      function renderCompiledVideo(clips, aspectRatio, maxClips) {
-        return new Promise((resolve, reject) => {
-          let outW = 1080, outH = 1920;
-          if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
-          else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
+      // ── SISTEMA DE GRABACIÓN Y UNIFICACIÓN DE N CLIPS EN 1 SOLO BLOB ───────
+      async function recordAndConcatenateClips(clips, aspectRatio) {
+        let outW = 1080, outH = 1920;
+        if (aspectRatio === "16:9") { outW = 1920; outH = 1080; }
+        else if (aspectRatio === "1:1") { outW = 1080; outH = 1080; }
 
-          procCanvas.width = outW;
-          procCanvas.height = outH;
+        procCanvas.width = outW;
+        procCanvas.height = outH;
 
+        let mime = "video/webm;codecs=vp8";
+        if (MediaRecorder.isTypeSupported("video/mp4")) {
+          mime = "video/mp4";
+        } else if (MediaRecorder.isTypeSupported("video/webm;codecs=h264")) {
+          mime = "video/webm;codecs=h264";
+        }
+
+        const clipBlobs = [];
+
+        for (let i = 0; i < clips.length; i++) {
+          const clip = clips[i];
+          
+          const pct = 40 + Math.floor(((i + 1) / clips.length) * 55);
+          progressBar.style.width = pct + "%";
+          statusText.textContent = `Procesando clip ${i + 1} de ${clips.length}...`;
+
+          const blobChunk = await recordSingleClip(clip, outW, outH, mime);
+          clipBlobs.push(blobChunk);
+        }
+
+        // UNIFICACIÓN NATIVA INSTANTÁNEA EN 1 SOLO ARCHIVO DE VIDEO FINAL
+        return new Blob(clipBlobs, { type: mime });
+      }
+
+      // GRABAR 1 CLIP INDIVIDUAL LIMPIO
+      function recordSingleClip(clip, outW, outH, mime) {
+        return new Promise((resolve) => {
           const videoTrack = procCanvas.captureStream(30).getVideoTracks()[0];
           let tracks = [videoTrack];
           
@@ -890,91 +911,57 @@
             tracks.push(audioDestNode.stream.getAudioTracks()[0]);
           }
 
-          const combinedStream = new MediaStream(tracks);
-
-          let mime = "video/webm;codecs=vp8";
-          if (MediaRecorder.isTypeSupported("video/mp4")) {
-            mime = "video/mp4";
-          } else if (MediaRecorder.isTypeSupported("video/webm;codecs=h264")) {
-            mime = "video/webm;codecs=h264";
-          }
-
-          const recorder = new MediaRecorder(combinedStream, { 
-            mimeType: mime,
-            videoBitsPerSecond: 6000000
-          });
-
+          const stream = new MediaStream(tracks);
+          const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
           const chunks = [];
+
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
           recorder.onstop = () => {
-            const blob = new Blob(chunks, { type: mime });
-            resolve(blob);
+            const b = new Blob(chunks, { type: mime });
+            resolve(b);
           };
 
-          recorder.start(100); // Guardar fragmentos cada 100ms de forma continua
+          sourceVideo.currentTime = clip.start;
           sourceVideo.muted = false;
-          sourceVideo.playbackRate = 1.0;
 
-          let clipIndex = 0;
+          const startRec = () => {
+            recorder.start(50);
+            sourceVideo.play().catch(() => {});
 
-          function renderNextClip() {
-            if (clipIndex >= clips.length) {
-              sourceVideo.pause();
-              recorder.stop();
-              return;
-            }
+            const clipStart = Date.now();
+            const durMs = (clip.end - clip.start) * 1000;
 
-            const currentClip = clips[clipIndex];
-            
-            // Actualizar porcentaje de progreso en UI
-            const pct = 40 + Math.floor(((clipIndex + 1) / clips.length) * 55);
-            progressBar.style.width = pct + "%";
-            statusText.textContent = `Unificando clip ${clipIndex + 1} de ${clips.length}...`;
-
-            sourceVideo.currentTime = currentClip.start;
-
-            const startPlayback = () => {
-              sourceVideo.play().catch(() => {});
-              const clipStartTime = Date.now();
-              const durationMs = (currentClip.end - currentClip.start) * 1000;
-
-              function drawLoop() {
-                const elapsed = Date.now() - clipStartTime;
-
-                if (elapsed >= durationMs) {
-                  // Finalizó este clip -> pasar INMEDIATAMENTE al siguiente clip en el mismo recorder continuo
-                  clipIndex++;
-                  renderNextClip();
-                  return;
-                }
-
-                // CROP CENTRADO PROPORCIONAL HD 9:16 VERTICAL
-                const vW = sourceVideo.videoWidth || 1920;
-                const vH = sourceVideo.videoHeight || 1080;
-                const vAspect = vW / vH;
-                const targetAspect = outW / outH;
-
-                let sW = vW, sH = vH, sX = 0, sY = 0;
-                if (vAspect > targetAspect) {
-                  sW = vH * targetAspect;
-                  sX = (vW - sW) / 2;
-                } else {
-                  sH = vW / targetAspect;
-                  sY = (vH - sH) / 2;
-                }
-
-                ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
-                requestAnimationFrame(drawLoop);
+            function draw() {
+              const elapsed = Date.now() - clipStart;
+              if (elapsed >= durMs) {
+                sourceVideo.pause();
+                recorder.stop();
+                return;
               }
 
-              drawLoop();
-            };
+              // CROP HD CENTRADO PROPORCIONAL
+              const vW = sourceVideo.videoWidth || 1920;
+              const vH = sourceVideo.videoHeight || 1080;
+              const vAspect = vW / vH;
+              const targetAspect = outW / outH;
 
-            sourceVideo.onseeked = startPlayback;
-            setTimeout(startPlayback, 120); // Fallback por si el seek es instantáneo
-          }
+              let sW = vW, sH = vH, sX = 0, sY = 0;
+              if (vAspect > targetAspect) {
+                sW = vH * targetAspect;
+                sX = (vW - sW) / 2;
+              } else {
+                sH = vW / targetAspect;
+                sY = (vH - sY) / 2;
+              }
 
-          renderNextClip();
+              ctx.drawImage(sourceVideo, sX, sY, sW, sH, 0, 0, outW, outH);
+              requestAnimationFrame(draw);
+            }
+            draw();
+          };
+
+          sourceVideo.onseeked = startRec;
+          setTimeout(startRec, 100);
         });
       }
     });
