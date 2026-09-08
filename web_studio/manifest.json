@@ -1,0 +1,22 @@
+{
+  "name": "Código Headshot — Video Studio",
+  "short_name": "Headshot Studio",
+  "description": "Editor automático profesional para videos y shorts de Free Fire",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B0E17",
+  "theme_color": "#FF0055",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

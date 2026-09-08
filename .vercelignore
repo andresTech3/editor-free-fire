@@ -1,0 +1,15 @@
+# Vercel Ignore for Video Project
+assets/
+output/
+temp_uploads/
+scratch/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wav
+*.zip
+*.onnx
+.git
+.gemini
+__pycache__/

@@ -2,12 +2,20 @@
 output/
 dist/
 build/
+temp_uploads/
+scratch/
+scan_*.jpg
+thumb_*.jpg
+*.ass
 *.mp4
 *.mov
 *.avi
 *.mkv
 *.wav
 *.mp3
+*.onnx
+*.spec
+.env
 
 # Python bytecode and temp
 __pycache__/

@@ -1,183 +1,82 @@
-# 🎬 ViralClip Maker
+---
+title: Codigo Headshot Free Fire Studio
+emoji: ⚡
+colorFrom: red
+colorTo: yellow
+sdk: docker
+app_port: 7860
+pinned: false
+---
 
-> **Tu Opus Clip gratuito** — Convierte videos largos en Shorts virales automáticamente usando IA local.
+# 🔥 Free Fire Short Video Generator & Interactive Studio (v26.0)
 
-Usa OpenAI Whisper, OpenCV, MoviePy y FFmpeg para detectar los momentos más virales de tu video y generar clips de máximo 60 segundos con:
-- 🔤 Subtítulos karaoke animados (palabra por palabra)
-- 🔍 Zoom dinámico estilo TikTok
-- 📱 Formato 9:16 con smart crop (centra al speaker)
-- 📺 Split screen arriba/abajo opcional
-- 🎨 Color grading cinematográfico automático
+
+Sistema profesional de edición automatizada y estudio interactivo GUI para la creación de **Videos Virales Shorts en formato 9:16 (60 FPS)** orientados a YouTube Shorts, TikTok y Instagram Reels de Free Fire.
 
 ---
 
-## ⚡ Instalación Rápida (Windows)
+## 🚀 Inicio Rápido (1 Clic)
 
-### 1. Instalar FFmpeg
-Ve a [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/) y descarga `ffmpeg-release-essentials.zip`.
-Extrae en `C:\ffmpeg` y añade `C:\ffmpeg\bin` al PATH del sistema.
+Simplemente ejecuta el acceso directo en tu Escritorio o en la raíz del proyecto:
+👉 **`C:\Users\SnyX\Desktop\Generar_Video_FreeFire.bat`**  
+o  
+👉 **`Generar_Video_FreeFire.bat`** (en la raíz del proyecto)
 
-O instala con winget:
-```
-winget install --id Gyan.FFmpeg -e
-```
-
-### 2. Ejecutar el instalador automático
-```
-setup.bat
-```
-Este script crea un entorno virtual, instala PyTorch, Whisper y todas las dependencias.
-
-### 3. Activar el entorno virtual manualmente (si lo necesitas)
-```
-venv\Scripts\activate
-```
+Se abrirá el **Estudio Interactivo en Modo Oscuro (Tkinter GUI)** donde podrás:
+1. Seleccionar o arrastrar tus archivos de audio de locución (`/Generar Video/`).
+2. Activar/Desactivar la música de fondo (Phonk/Hype) con ducking automático a -18dB.
+3. Seleccionar el modo de entrada del Hook (Auto-Detección por voz, Pega Todo Rojo, Pega Amarillo).
+4. Ajustar densidad de memes semánticos de pantalla verde (`PACK MEMES PANTALLA VERDE 1 (manuDT)`).
+5. Renderizar en 1 clic y abrir el video final en alta definición (`output/final_short_916.mp4`).
 
 ---
 
-## 🚀 Uso
-
-### Básico
-Coloca tu video en la carpeta `input/` y ejecuta:
-```bash
-python main.py input/tu_video.mp4
-```
-
-### Con opciones
-```bash
-# Generar 7 clips con split screen y estilo azul neón
-python main.py input/video.mp4 --clips 7 --split-screen --style neon_blue
-
-# Modelo Whisper más preciso (más lento)
-python main.py input/video.mp4 --model small
-
-# Video en inglés sin zoom
-python main.py input/video.mp4 --lang en --no-zoom
-
-# Ayuda completa
-python main.py --help
-```
-
-### Opciones disponibles
-| Opción | Valores | Default | Descripción |
-|---|---|---|---|
-| `--clips N` | 1-20 | 5 | Cuántos clips generar |
-| `--model` | tiny/base/small | base | Modelo Whisper |
-| `--lang` | es/en/auto | es | Idioma del video |
-| `--style` | viral_yellow/neon_blue/fire_orange/white_bold | viral_yellow | Estilo de subtítulos |
-| `--split-screen` | flag | off | Activar pantalla dividida |
-| `--no-zoom` | flag | zoom activado | Desactivar zoom |
-| `--no-subtitles` | flag | subtítulos activados | Desactivar subtítulos |
-
----
-
-## 📁 Estructura de Carpetas
+## 📁 Estructura del Proyecto Organizada
 
 ```
 Edicion en Capcut/
-├── 📁 input/          ← Coloca aquí tus videos largos
-├── 📁 output/         ← Clips virales generados aparecen aquí
-│   └── nombre_video/
-│       ├── clip_01_score0.85.mp4
-│       ├── clip_02_score0.72.mp4
-│       └── report.txt
-├── config.toml        ← Personaliza todo aquí
-├── main.py            ← Punto de entrada
-└── setup.bat          ← Instalador automático
+├── Generar_Video_FreeFire.bat   # Launcher directo .bat
+├── desktop_gui.py               # Aplicación GUI de estudio interactivo
+├── desktop_auto_editor.py       # Motor principal de edición y renderizado (v18.0)
+├── README.md                    # Documentación del proyecto
+├── output/
+│   └── final_short_916.mp4      # Video final renderizado (1080x1920 60 FPS)
+└── assets/
+    └── Recurso video Freefire/  # CARPETA ÚNICA DE RECURSOS DEL PROYECTO
+        ├── Generar Video/       # Audios de locución subidos por el usuario (.mp3 / .wav)
+        ├── free fire jugadas/   # recopilacion_tiros_rojo 1..5.mp4 y recopilacion_fallando.mp4
+        ├── video Guia/          # emotes.MP4 y Animate_the_image_*.mp4 (video animado de libro)
+        ├── Imagenes/            # avatar_cutout.png, sencibilidad.jpg, logo.jpeg, personajes PNG
+        ├── efectos de sonidos/  # SFX (vine-boom, whoosh, ding, punch, error)
+        ├── musica/              # Pistas de música Phonk / Hype de fondo
+        └── PACK MEMES PANTALLA VERDE 1 (manuDT)/  # 205 Memes en pantalla verde (Chromakey)
 ```
 
 ---
 
-## ⚙ Configuración (`config.toml`)
+## 🎯 Características Principales del Motor v18.0
 
-Edita `config.toml` para personalizar el comportamiento sin usar la línea de comandos:
+- **Detección Inteligente de Hook por Voz**: Lee la locución. Si habla de pecheadas o tiros fallados, abre con el clip `recopilacion_fallando.mp4`. Si no, entra directo con `recopilacion_tiros_rojo`.
+- **Pureza Absoluta de Tiros Rojos (Clips #2 al N)**: El cuerpo principal del video usa **exclusivamente compilaciones de tiros a la cabeza**. Los clips de fallos están 100% prohibidos del desarrollo principal.
+- **Rampas de Velocidad Frenéticas (Speed Ramp 1.5x)**: Acelera los desplazamientos y caminatas a 1.5x para mantener un ritmo hiperactivo, e impacta a 1.0x velocidad normal con micro-zoom (1.06x) al conectar el tiro rojo.
+- **Superposición de Memes de Pantalla Verde en Alta Densidad**: Indexa los **205 memes** de la carpeta y los superpone con extracción de verde (HSV Chromakey) en cada 2 clips con bucle continuo (`auto-rewind`).
+- **Disparador Inteligente de Libro / Guía**: Al detectar menciones de guías o libros, inserta el clip animado `Animate_the_image_*.mp4` con el personaje recortado flotando en pantalla.
+- **Audio Ducked (-18dB) y Música en Bucle Infinito**: La música de fondo se ajusta a la duración exacta de la voz con fade-in y fade-out sin cortarse a mitad del video.
+- **Tipografía Limpia sin Cuadros (`□`)**: Renderiza subtítulos nítidos en amarillo y blanco con borde negro sin artefactos de símbolos no compatibles.
 
-```toml
-[general]
-max_clip_duration = 60    # Máximo 60s por clip
-min_clip_duration = 20    # Mínimo 20s por clip
-num_clips = 5             # 5 clips por video
-language = "es"           # Idioma español
+---
 
-[effects]
-enable_zoom = true
-enable_subtitles = true
-enable_split_screen = false
-subtitle_style = "viral_yellow"
+## 🛠️ Requisitos Técnicos
 
-[analysis]
-whisper_model = "base"
-viral_keywords_es = ["increíble", "secreto", "nunca", ...]
+- **Python 3.10+**
+- **FFmpeg** (instalado en el PATH del sistema)
+- Librerías Python: `opencv-python`, `pillow`, `numpy`
+
+Para instalar dependencias si se requiere en una nueva máquina:
+```bash
+pip install opencv-python pillow numpy
 ```
 
 ---
 
-## 🔥 Algoritmo de Viralidad
-
-El sistema puntúa cada segmento del video con:
-
-```
-viral_score = (
-    35% × energía_audio      ← Picos de volumen/intensidad
-  + 25% × palabras_clave     ← "secreto", "increíble", números, etc.
-  + 20% × intensidad_emocional  ← Análisis de sentimiento
-  + 20% × ritmo_del_habla    ← Velocidad óptima 2.5-4 palabras/seg
-)
-```
-
----
-
-## 💻 Requisitos del Sistema
-
-- **Python:** 3.9 o superior
-- **RAM:** Mínimo 4 GB (8 GB recomendado para videos largos)
-- **Espacio:** ~3 GB para modelos Whisper + dependencias
-- **FFmpeg:** Necesario (ver instalación)
-- **GPU:** Opcional pero recomendada (NVIDIA CUDA acelera Whisper 5-10x)
-
-### Tiempos estimados (CPU, sin GPU)
-| Video | tiny | base | small |
-|---|---|---|---|
-| 10 min | ~1 min | ~3 min | ~8 min |
-| 30 min | ~3 min | ~8 min | ~20 min |
-| 60 min | ~6 min | ~15 min | ~40 min |
-
----
-
-## 🎨 Estilos de Subtítulos
-
-| Estilo | Color resaltado | Ideal para |
-|---|---|---|
-| `viral_yellow` | Amarillo neón 🟡 | TikTok, contenido general |
-| `neon_blue` | Cian eléctrico 💙 | Tech, gaming, educativo |
-| `fire_orange` | Naranja fuego 🔥 | Motivacional, deporte, noticias |
-| `white_bold` | Blanco puro ⚪ | Minimalista, vlogs |
-
----
-
-## 🐛 Solución de Problemas
-
-**Error: `ffmpeg not found`**
-→ Instala FFmpeg y asegúrate que está en el PATH del sistema.
-
-**Error: `No module named 'whisper'`**
-→ Ejecuta `setup.bat` o `pip install openai-whisper`.
-
-**El modelo Whisper tarda mucho**
-→ Usa `--model tiny` para pruebas. Es menos preciso pero muy rápido.
-
-**Error de memoria (RAM)**
-→ Usa `--model tiny` y genera menos clips `--clips 3`.
-
-**Los subtítulos están desincronizados**
-→ Prueba con `--model small` para mayor precisión de timestamps.
-
----
-
-## 📋 Licencia
-
-Proyecto de código abierto. Usa librerías con licencia MIT/Apache:
-- [OpenAI Whisper](https://github.com/openai/whisper) (MIT)
-- [MoviePy](https://github.com/Zulko/moviepy) (MIT)
-- [OpenCV](https://opencv.org/) (Apache 2.0)
-- [FFmpeg](https://ffmpeg.org/) (LGPL/GPL)
+*Proyecto configurado y optimizado al 100% para producción continua.*

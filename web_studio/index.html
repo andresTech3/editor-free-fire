@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Código Headshot — Mobile & Web Video Studio</title>
+  <meta name="description" content="Editor automático profesional para videos y shorts virales de Free Fire.">
+  
+  <!-- PWA Metadata -->
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#FF0055">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Headshot Studio">
+
+  <!-- Google Fonts Outfit & Space Grotesk -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="glow-bg glow-1"></div>
+  <div class="glow-bg glow-2"></div>
+
+  <main class="app-wrapper">
+    <!-- HEADER -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-badge">⚡ v26.0 PRO</div>
+        <h1 class="brand-title">CÓDIGO <span class="accent-text">HEADSHOT</span></h1>
+        <p class="brand-sub">Estudio Automático de Videos Virales Free Fire</p>
+      </div>
+      <div class="server-pill" id="serverPill">
+        <span class="status-dot"></span>
+        <span id="serverHostLabel">Conectando...</span>
+      </div>
+    </header>
+
+    <!-- STEP 1: AUDIO DE LOCUCIÓN -->
+    <section class="card step-card" id="stepAudioCard">
+      <div class="card-header">
+        <div class="step-num">1</div>
+        <div>
+          <h2 class="card-title">Audio de Locución</h2>
+          <p class="card-desc">Sube la narración o voz en off (.mp3, .wav, .m4a)</p>
+        </div>
+      </div>
+
+      <div class="upload-zone" id="audioDropzone">
+        <input type="file" id="audioFileInput" accept="audio/*" class="file-hidden">
+        <div class="upload-content" id="audioUploadPrompt">
+          <div class="upload-icon">🎙️</div>
+          <p class="upload-main-text">Toca para seleccionar o arrastra tu audio</p>
+          <p class="upload-sub-text">MP3, WAV, M4A — Cualquier duración</p>
+        </div>
+        <div class="file-loaded-info" id="audioLoadedInfo" style="display: none;">
+          <div class="file-meta">
+            <span class="file-badge">AUDIO LISTO</span>
+            <h4 class="file-name" id="loadedAudioName">audio.mp3</h4>
+          </div>
+          <audio id="audioPreview" controls class="audio-mini-player"></audio>
+          <button type="button" class="btn-change" id="btnChangeAudio">Cambiar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: CARPETA DE RECURSOS -->
+    <section class="card step-card" id="stepResourcesCard">
+      <div class="card-header">
+        <div class="step-num">2</div>
+        <div>
+          <h2 class="card-title">Recursos Visuales & Jugadas</h2>
+          <p class="card-desc">Elige el pack oficial o investiga tus propios archivos</p>
+        </div>
+      </div>
+
+      <!-- Toggle Default vs Custom -->
+      <div class="mode-switch-container">
+        <button type="button" class="mode-btn active" id="btnModeDefault">
+          <span class="mode-icon">🛡️</span>
+          <span class="mode-text">
+            <strong>Pack Oficial Maestro</strong>
+            <small>37 Jugadas, 282 Memes, Armas, Diamantes</small>
+          </span>
+        </button>
+        <button type="button" class="mode-btn" id="btnModeCustom">
+          <span class="mode-icon">📂</span>
+          <span class="mode-text">
+            <strong>Subir Mis Recursos</strong>
+            <small>Investigar carpeta o videos propios</small>
+          </span>
+        </button>
+      </div>
+
+      <!-- Default Pack Info Box -->
+      <div class="default-pack-banner" id="defaultPackBanner">
+        <div class="pack-badge">PACK LOCAL INTEGRADO</div>
+        <div class="pack-stats-grid">
+          <div class="stat-pill">🎥 37 Gameplays 16:9</div>
+          <div class="stat-pill">🤡 282 Memes (196 Croma)</div>
+          <div class="stat-pill">🐉 Armas Alfa (AK47, Groza)</div>
+          <div class="stat-pill">💎 Diamantes & DPI</div>
+        </div>
+      </div>
+
+      <!-- Custom Upload Box (Hidden by default) -->
+      <div class="custom-resources-box" id="customResourcesBox" style="display: none;">
+        <div class="upload-zone" id="resourcesDropzone">
+          <input type="file" id="resourcesFileInput" multiple accept="video/*,image/*,audio/*" class="file-hidden">
+          <div class="upload-content" id="resourcesUploadPrompt">
+            <div class="upload-icon">📁</div>
+            <p class="upload-main-text">Toca para seleccionar archivos de recursos</p>
+            <p class="upload-sub-text">Videos de jugadas, memes, imágenes PNG/JPG</p>
+          </div>
+          <div class="file-loaded-info" id="resourcesLoadedInfo" style="display: none;">
+            <div class="file-meta">
+              <span class="file-badge">ARCHIVOS LISTOS</span>
+              <h4 class="file-name" id="loadedResourcesCount">0 archivos seleccionados</h4>
+            </div>
+            <button type="button" class="btn-change" id="btnChangeResources">Cambiar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: FORMATO & ESTILO -->
+    <section class="card step-card" id="stepConfigCard">
+      <div class="card-header">
+        <div class="step-num">3</div>
+        <div>
+          <h2 class="card-title">Formato de Video</h2>
+          <p class="card-desc">Selecciona la plataforma de publicación</p>
+        </div>
+      </div>
+
+      <div class="format-grid">
+        <label class="format-card active" id="lblFormatShort">
+          <input type="radio" name="aspectRatio" value="9:16" checked class="radio-hidden">
+          <div class="format-visual format-916">
+            <div class="phone-mockup">
+              <div class="phone-screen">
+                <span class="phone-tag">SHORTS</span>
+              </div>
+            </div>
+          </div>
+          <div class="format-info">
+            <div class="format-badge">RECOMENDADO</div>
+            <h3 class="format-name">Shorts / TikTok (9:16)</h3>
+            <p class="format-desc">Pantalla completa vertical, zoom al personaje, memes croma, subtítulos karaoke.</p>
+          </div>
+        </label>
+
+        <label class="format-card" id="lblFormatLong">
+          <input type="radio" name="aspectRatio" value="16:9" class="radio-hidden">
+          <div class="format-visual format-169">
+            <div class="tv-mockup">
+              <div class="tv-screen">
+                <span class="tv-tag">YOUTUBE</span>
+              </div>
+            </div>
+          </div>
+          <div class="format-info">
+            <div class="format-badge">LARGO 1080P</div>
+            <h3 class="format-name">YouTube Video (16:9)</h3>
+            <p class="format-desc">Widescreen horizontal, Intro oficial completa de 10s tras el hook, música ducking.</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- Quick Toggles -->
+      <div class="options-row">
+        <div class="option-item">
+          <label for="speedSelect" class="option-label">Ritmo de Edición:</label>
+          <select id="speedSelect" class="styled-select">
+            <option value="1.5" selected>⚡ 1.5x Frenético (Recomendado)</option>
+            <option value="1.0">🎯 1.0x Normal</option>
+            <option value="1.8">🔥 1.8x Extremo</option>
+          </select>
+        </div>
+
+        <div class="option-item">
+          <label for="hookSelect" class="option-label">Gancho Inicial:</label>
+          <select id="hookSelect" class="styled-select">
+            <option value="auto" selected>🎯 Auto (Mejor Tiro a la Cabeza)</option>
+            <option value="red">🔴 Prioridad Números Rojos</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- ACTION BUTTON -->
+    <div class="action-container">
+      <button type="button" class="btn-generate-main" id="btnGenerate">
+        <span class="btn-glow"></span>
+        <span class="btn-icon">🚀</span>
+        <span class="btn-text">CREAR VIDEO PROFESIONAL</span>
+      </button>
+    </div>
+
+    <!-- PROGRESS & LIVE MONITOR (Hidden initially) -->
+    <section class="card progress-card" id="progressCard" style="display: none;">
+      <div class="progress-header">
+        <div class="spinner" id="progressSpinner"></div>
+        <div>
+          <h3 class="progress-title" id="progressStepTitle">Procesando Video...</h3>
+          <p class="progress-sub" id="progressPercentLabel">0% completado</p>
+        </div>
+      </div>
+
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progressBarFill" style="width: 5%;"></div>
+      </div>
+
+      <div class="live-milestones">
+        <div class="milestone-item" id="msWhisper">
+          <span class="ms-dot"></span>
+          <span class="ms-text">Análisis de Voz Whisper</span>
+        </div>
+        <div class="milestone-item" id="msInvestigate">
+          <span class="ms-dot"></span>
+          <span class="ms-text">Investigación & Headshots</span>
+        </div>
+        <div class="milestone-item" id="msMemes">
+          <span class="ms-dot"></span>
+          <span class="ms-text">Sincronización de Memes</span>
+        </div>
+        <div class="milestone-item" id="msRender">
+          <span class="ms-dot"></span>
+          <span class="ms-text">Renderizado FFmpeg 60FPS</span>
+        </div>
+      </div>
+
+      <div class="terminal-box">
+        <div class="terminal-header">
+          <span>REGISTRO EN VIVO</span>
+          <span class="terminal-live-tag">LIVE</span>
+        </div>
+        <div class="terminal-body" id="terminalOutput">
+          <p class="term-line">Iniciando motor Código Headshot Studio...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULT & VIDEO PLAYER (Hidden initially) -->
+    <section class="card result-card" id="resultCard" style="display: none;">
+      <div class="result-badge">🎉 ¡VIDEO LISTO EN ALTA DEFINICIÓN!</div>
+      
+      <div class="player-container">
+        <video id="finalVideoPlayer" controls playsinline preload="auto" class="styled-player"></video>
+      </div>
+
+      <div class="result-actions">
+        <a id="btnDownloadVideo" href="#" download="video_freefire_viral.mp4" class="btn-download-main">
+          <span>⬇️ DESCARGAR VIDEO (.MP4)</span>
+        </a>
+        <button type="button" id="btnReset" class="btn-reset">
+          <span>CREAR OTRO VIDEO</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
