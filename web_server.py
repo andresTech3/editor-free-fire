@@ -73,14 +73,20 @@ def get_local_ip() -> str:
         s.close()
     return ip
 
-# Cache default resources investigation
-default_investigation_cache = None
+# Precomputed default official pack summary (prevents blocking the server on startup)
+DEFAULT_PACK_SUMMARY = {
+    "gameplay_count": 37,
+    "memes_count": 282,
+    "images_count": 16,
+    "audios_count": 12,
+    "green_screen_memes_count": 196,
+    "transparent_images_count": 7
+}
+
+default_investigation_cache = {"summary": DEFAULT_PACK_SUMMARY}
 
 def get_default_investigation() -> Dict[str, Any]:
     global default_investigation_cache
-    if default_investigation_cache is None:
-        inv = AssetInvestigator(str(ASSETS_DIR))
-        default_investigation_cache = inv.investigate()
     return default_investigation_cache
 
 # ── API ENDPOINTS ─────────────────────────────────────────────────────────────
@@ -88,12 +94,11 @@ def get_default_investigation() -> Dict[str, Any]:
 @app.get("/api/info")
 async def get_server_info():
     ip = get_local_ip()
-    def_inv = get_default_investigation()
     return {
         "status": "online",
         "local_ip": ip,
         "mobile_url": f"http://{ip}:8000",
-        "default_assets": def_inv["summary"]
+        "default_assets": DEFAULT_PACK_SUMMARY
     }
 
 from pydantic import BaseModel
@@ -130,11 +135,10 @@ async def upload_files(
 
     if use_default_resources or not resources:
         res_dir = ASSETS_DIR
-        def_inv = get_default_investigation()
         investigation_summary = {
             "mode": "official_default_pack",
             "message": "Usando el Pack Maestro Oficial Free Fire (37 jugadas, memes verdes, armas, diamantes)",
-            "details": def_inv["summary"]
+            "details": DEFAULT_PACK_SUMMARY
         }
     else:
         # Save custom uploaded resources
@@ -179,6 +183,10 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
         jobs[job_id]["progress"] = 10
 
     try:
+        proc_env = os.environ.copy()
+        proc_env["PYTHONUNBUFFERED"] = "1"
+        proc_env["PYTHONIOENCODING"] = "utf-8"
+
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -186,6 +194,7 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=proc_env,
             cwd=str(PROJECT_ROOT)
         )
 
@@ -198,8 +207,8 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
 
             with jobs_lock:
                 jobs[job_id]["logs"].append(clean_line)
-                # Keep last 60 logs
-                if len(jobs[job_id]["logs"]) > 60:
+                # Keep last 80 logs
+                if len(jobs[job_id]["logs"]) > 80:
                     jobs[job_id]["logs"].pop(0)
 
                 # Update progress based on process milestones
@@ -212,7 +221,7 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
                 elif "Montage" in clean_line or "Contextual Memes" in clean_line or "Memes" in clean_line:
                     jobs[job_id]["progress"] = max(jobs[job_id]["progress"], 65)
                     jobs[job_id]["step"] = "Sincronizando memes contextuales y capas visuales..."
-                elif "Compiling" in clean_line or "FFmpeg render" in clean_line or "Master" in clean_line:
+                elif "Compiling" in clean_line or "FFmpeg render" in clean_line or "Master" in clean_line or "Remotion" in clean_line:
                     jobs[job_id]["progress"] = max(jobs[job_id]["progress"], 85)
                     jobs[job_id]["step"] = "Renderizando video maestro en alta definición (60 FPS)..."
 
@@ -227,12 +236,16 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
                 jobs[job_id]["file_size_mb"] = round(os.path.getsize(target_file) / (1024 * 1024), 2)
         else:
             with jobs_lock:
+                last_err_lines = [l for l in jobs[job_id]["logs"][-10:] if "Error" in l or "error" in l or "Exception" in l or "Traceback" in l]
+                summary_err = " | ".join(last_err_lines) if last_err_lines else "Fallo durante el renderizado. Revisa los registros."
                 jobs[job_id]["status"] = "failed"
-                jobs[job_id]["error"] = "Error durante el renderizado. Revisa los registros."
+                jobs[job_id]["error"] = summary_err
+                jobs[job_id]["step"] = "Fallo en la generación"
     except Exception as e:
         with jobs_lock:
             jobs[job_id]["status"] = "failed"
             jobs[job_id]["error"] = str(e)
+            jobs[job_id]["step"] = "Fallo en la ejecución"
 
 @app.post("/api/generate")
 async def generate_video(payload: GenerateRequest):
@@ -266,6 +279,7 @@ async def generate_video(payload: GenerateRequest):
         # Launch Master Long Video Engine (YouTube 16:9 widescreen)
         cmd = [
             sys.executable,
+            "-u",
             str(PROJECT_ROOT / "long_video_engine.py"),
             "--audio", str(audio_path),
             "--gameplay", str(res_dir),
@@ -276,6 +290,7 @@ async def generate_video(payload: GenerateRequest):
         # Launch Master Shorts Engine (9:16 Vertical full-screen zoom)
         cmd = [
             sys.executable,
+            "-u",
             str(PROJECT_ROOT / "desktop_auto_editor.py"),
             "--aspect", "9:16",
             "--audio", str(audio_path),

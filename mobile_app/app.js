@@ -288,7 +288,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const clip = clips[currentClipIdx];
         sourceVideo.currentTime = clip.start;
 
+        let seekHandled = false;
         const onSeek = () => {
+          if (seekHandled) return;
+          seekHandled = true;
+          sourceVideo.onseeked = null;
+
           sourceVideo.play().catch(() => {});
           const startTime = Date.now();
           const targetDurMs = (clip.end - clip.start) * 1000;
@@ -310,7 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         sourceVideo.onseeked = onSeek;
-        setTimeout(onSeek, 200); // safety fallback seek
+        setTimeout(onSeek, 250); // safety fallback seek
       }
 
       processClip();

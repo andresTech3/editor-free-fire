@@ -939,16 +939,29 @@
           sourceVideo.muted = false;
           sourceVideo.volume = 1.0;
 
+          let safetyTimer = null;
+          recorder.onstop = () => {
+            if (safetyTimer) clearTimeout(safetyTimer);
+            resolve(new Blob(chunks, { type: mime }));
+          };
+
           const startRec = () => {
             recorder.start(50);
             sourceVideo.play().catch(() => {});
 
             let clipStart = null;
+            let waitTries = 0;
             const durMs = (clip.end - clip.start) * 1000;
+
+            safetyTimer = setTimeout(() => {
+              sourceVideo.pause();
+              try { recorder.stop(); } catch (e) {}
+            }, durMs + 3500);
 
             function draw() {
               if (!clipStart) {
-                if (sourceVideo.seeking || sourceVideo.paused) {
+                waitTries++;
+                if ((sourceVideo.seeking || sourceVideo.paused) && waitTries < 45) {
                   requestAnimationFrame(draw);
                   return;
                 }
@@ -958,7 +971,7 @@
               const elapsed = Date.now() - clipStart;
               if (elapsed >= durMs) {
                 sourceVideo.pause();
-                recorder.stop();
+                try { recorder.stop(); } catch (e) {}
                 return;
               }
 

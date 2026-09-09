@@ -729,12 +729,12 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         elif seg["is_headshot"]:
             filter_parts.append(
                 f"[{in_i}:v]{pts_filter},{rot_filter}"
-                f"scale=2208:1242:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=60[{lbl}];"
+                f"scale=2208:1242:force_original_aspect_ratio=increase,crop=1920:1080,eq=contrast=1.18:saturation=1.35:brightness=0.02,setsar=1,fps=60[{lbl}];"
             )
         else:
             filter_parts.append(
                 f"[{in_i}:v]{pts_filter},{rot_filter}"
-                f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=60[{lbl}];"
+                f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,eq=contrast=1.18:saturation=1.35:brightness=0.02,setsar=1,fps=60[{lbl}];"
             )
         v_concat_labels.append(f"[{lbl}]")
 
@@ -972,7 +972,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         "-map", "[a_final]",
         "-c:v", "libx264",
         "-preset", "fast",
-        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "15M",
+        "-bufsize", "20M",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "192k",

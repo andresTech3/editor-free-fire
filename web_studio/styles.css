@@ -137,6 +137,13 @@ html, body {
   font-weight: 700;
   color: var(--accent-green);
   font-family: var(--font-mono);
+  transition: all 0.2s ease;
+}
+
+.server-pill.needs-config {
+  background: rgba(255, 107, 0, 0.12);
+  border-color: rgba(255, 107, 0, 0.4);
+  color: #FF9E00;
 }
 
 .status-dot {
@@ -146,6 +153,11 @@ html, body {
   background-color: var(--accent-green);
   box-shadow: 0 0 10px var(--accent-green);
   animation: pulse 2s infinite;
+}
+
+.server-pill.needs-config .status-dot {
+  background-color: #FF9E00;
+  box-shadow: 0 0 10px #FF9E00;
 }
 
 @keyframes pulse {

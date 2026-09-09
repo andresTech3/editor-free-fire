@@ -101,14 +101,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function checkServerInfo() {
     try {
-      const res = await fetch(buildApiUrl('/api/info'));
+      const res = await fetch(buildApiUrl('/api/info'), {
+        headers: {
+          'bypass-tunnel-reminder': '1',
+          'Bypass-Tunnel-Reminder': 'true'
+        }
+      });
       if (res.ok) {
         const data = await res.json();
-        const displayHost = apiBaseUrl ? new URL(apiBaseUrl).hostname : (data.host_ip || data.local_ip || 'Online');
-        serverHostLabel.textContent = `Online (${displayHost})`;
-        serverPill.classList.add('online');
+        const isVercelEdge = data.platform && data.platform.includes('Vercel');
+        if (isVercelEdge && !apiBaseUrl) {
+          // On Vercel edge without a backend rendering tunnel configured
+          serverHostLabel.textContent = '⚙️ Conectar Túnel (PC)';
+          serverPill.classList.remove('online');
+          serverPill.classList.add('needs-config');
+          serverPill.title = 'Toca aquí para ingresar la URL de tu túnel o servidor de PC';
+        } else {
+          const displayHost = apiBaseUrl ? new URL(apiBaseUrl).hostname : (data.host_ip || data.local_ip || 'Online');
+          serverHostLabel.textContent = `Online (${displayHost})`;
+          serverPill.classList.add('online');
+          serverPill.classList.remove('needs-config');
+          serverPill.title = `Conectado al servidor de renderizado (${displayHost})`;
+        }
       } else {
-        serverHostLabel.textContent = apiBaseUrl ? 'Error Servidor' : 'Vercel Cloud';
+        serverHostLabel.textContent = apiBaseUrl ? 'Error Servidor' : '⚙️ Conectar Túnel';
+        serverPill.classList.remove('online');
       }
     } catch (e) {
       if (window.location.hostname.includes('vercel.app')) {
@@ -116,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         serverHostLabel.textContent = 'Modo Local';
       }
+      serverPill.classList.remove('online');
       console.warn('Could not fetch /api/info:', e);
     }
   }
@@ -273,12 +291,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const uploadRes = await fetch(buildApiUrl('/api/upload'), {
         method: 'POST',
+        headers: {
+          'bypass-tunnel-reminder': '1',
+          'Bypass-Tunnel-Reminder': 'true'
+        },
         body: uploadFormData
       });
 
       if (!uploadRes.ok) {
-        const errJson = await uploadRes.json();
-        throw new Error(errJson.detail || 'Error en la subida de archivos');
+        let errMsg = 'Error en la subida de archivos';
+        try {
+          const errJson = await uploadRes.json();
+          errMsg = errJson.detail || errMsg;
+        } catch (_) {
+          errMsg = `Error HTTP ${uploadRes.status} (${uploadRes.statusText})`;
+        }
+        throw new Error(errMsg);
       }
 
       const uploadData = await uploadRes.json();
@@ -303,13 +331,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const genRes = await fetch(buildApiUrl('/api/generate'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'bypass-tunnel-reminder': '1',
+          'Bypass-Tunnel-Reminder': 'true'
+        },
         body: JSON.stringify(genPayload)
       });
 
       if (!genRes.ok) {
-        const errGen = await genRes.json();
-        throw new Error(errGen.detail || 'Error al iniciar la generación');
+        let errGenMsg = 'Error al iniciar la generación';
+        try {
+          const errGen = await genRes.json();
+          errGenMsg = errGen.detail || errGenMsg;
+        } catch (_) {
+          errGenMsg = `Error HTTP ${genRes.status} (${genRes.statusText})`;
+        }
+        throw new Error(errGenMsg);
       }
 
       const genData = await genRes.json();
@@ -332,12 +370,32 @@ document.addEventListener('DOMContentLoaded', () => {
   // 6. Polling Worker
   function startPolling(jobId) {
     if (pollInterval) clearInterval(pollInterval);
+    let consecutiveErrors = 0;
 
     pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(buildApiUrl(`/api/status/${jobId}`));
-        if (!res.ok) return;
+        const res = await fetch(buildApiUrl(`/api/status/${jobId}`), {
+          headers: {
+            'bypass-tunnel-reminder': '1',
+            'Bypass-Tunnel-Reminder': 'true'
+          }
+        });
 
+        if (!res.ok) {
+          consecutiveErrors++;
+          if (consecutiveErrors >= 10) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            updateProgress(0, 'Servidor no responde', 'Conexión interrumpida');
+            addLogLine(`[ERROR] ❌ Pérdida de comunicación con el servidor (HTTP ${res.status}).`);
+            btnGenerate.disabled = false;
+            btnGenerate.classList.remove('btn-disabled');
+            showToast('⚠️ Se perdió la conexión con el servidor.');
+          }
+          return;
+        }
+
+        consecutiveErrors = 0;
         const data = await res.json();
         updateProgress(data.progress || 10, data.step || 'Procesando...', `Progreso ${data.progress}%`);
 
@@ -361,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setMilestone(msRender, 'active');
         }
 
-        // Check completion
+        // Check completion or failure
         if (data.status === 'completed') {
           clearInterval(pollInterval);
           pollInterval = null;
@@ -372,17 +430,27 @@ document.addEventListener('DOMContentLoaded', () => {
           setTimeout(() => {
             showFinalResult(data);
           }, 600);
-        } else if (data.status === 'error') {
+        } else if (data.status === 'failed' || data.status === 'error') {
           clearInterval(pollInterval);
           pollInterval = null;
           updateProgress(0, 'Error durante la generación', 'Fallido');
-          addLogLine(`[ERROR] ❌ ${data.error || 'Fallo desconocido'}`);
+          addLogLine(`[ERROR] ❌ ${data.error || 'Fallo durante el renderizado'}`);
           btnGenerate.disabled = false;
           btnGenerate.classList.remove('btn-disabled');
+          showToast(`❌ Error: ${data.error || 'Fallo durante el renderizado'}`);
         }
 
       } catch (e) {
+        consecutiveErrors++;
         console.warn('Poll error:', e);
+        if (consecutiveErrors >= 12) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          updateProgress(0, 'Error de conexión', 'Fallido');
+          addLogLine(`[ERROR] ❌ No se pudo conectar al servidor: ${e.message}`);
+          btnGenerate.disabled = false;
+          btnGenerate.classList.remove('btn-disabled');
+        }
       }
     }, 1500);
   }

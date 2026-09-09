@@ -4,6 +4,7 @@ dist/
 build/
 temp_uploads/
 scratch/
+node_modules/
 scan_*.jpg
 thumb_*.jpg
 *.ass
@@ -13,6 +14,8 @@ thumb_*.jpg
 *.mkv
 *.wav
 *.mp3
+!sfx/*.wav
+!overlays/*.webm
 *.onnx
 *.spec
 .env

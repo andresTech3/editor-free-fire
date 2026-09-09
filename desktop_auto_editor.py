@@ -208,6 +208,39 @@ def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
     return list(dict.fromkeys(gameplay_files))
 
 
+def generate_killcard_overlay_if_needed(headshots=3, player_tag="CODIGO HEADSHOT PRO"):
+    """
+    Ensures the Remotion KillCardOverlay (PDF technical spec) is compiled into a transparent WebM/MOV.
+    """
+    overlay_dir = PROJECT_ROOT / "overlays"
+    overlay_dir.mkdir(parents=True, exist_ok=True)
+    overlay_webm = overlay_dir / "remotion_overlay.webm"
+    overlay_mov = overlay_dir / "remotion_overlay.mov"
+
+    if overlay_webm.exists():
+        return str(overlay_webm)
+    if overlay_mov.exists():
+        return str(overlay_mov)
+
+    print(f"🎬 [Remotion] Compiling KillCardOverlay (x{headshots}, {player_tag})...")
+    try:
+        script = PROJECT_ROOT / "remotion_overlays.js"
+        cmd = [
+            "node", str(script),
+            "--killcard",
+            "--headshots", str(headshots),
+            "--tag", str(player_tag),
+            "--out", "remotion_overlay.webm"
+        ]
+        subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
+        if overlay_webm.exists():
+            return str(overlay_webm)
+    except Exception as e:
+        print(f"⚠️ [Remotion] Could not compile KillCardOverlay via node: {e}")
+
+    return str(overlay_webm) if overlay_webm.exists() else None
+
+
 def shift_subtitles_for_memes(transcribed_segments, meme_events):
     """
     Shifts subtitle timestamps forward by the cumulative duration of memes that appeared before them.
@@ -561,6 +594,22 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
 
     input_idx = 4
 
+    # Remotion KillCardOverlay (PDF Spec: Section 3 & 4)
+    remotion_overlay_file = generate_killcard_overlay_if_needed(headshots=3, player_tag="CODIGO HEADSHOT PRO")
+    remotion_in_idx = None
+    if remotion_overlay_file and os.path.exists(remotion_overlay_file):
+        cmd.extend(["-i", remotion_overlay_file])
+        remotion_in_idx = input_idx
+        input_idx += 1
+
+    # SFX Bass Drop (PDF Spec: Section 4)
+    sfx_bass_drop = PROJECT_ROOT / "sfx" / "sfx_bass_drop.wav"
+    bass_in_idx = None
+    if sfx_bass_drop.exists():
+        cmd.extend(["-i", str(sfx_bass_drop)])
+        bass_in_idx = input_idx
+        input_idx += 1
+
     # Inputs 4+: B-roll gameplay clips
     broll_input_indices = []
     for seg in broll_segments:
@@ -621,19 +670,23 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     filter_parts = []
     v_concat_labels = []
 
-    # 1. Process Video B-rolls into 9:16 (Blurred Ambient Background + Upright Centered Gameplay)
+    # 1. Process Video B-rolls into 9:16 (PDF Spec: Zoom Shakes & Color Grading)
     for b_i, seg in enumerate(broll_segments):
         in_i = broll_input_indices[b_i]
         lbl = f"v_broll_{b_i}"
         rot_filter = get_video_orientation_filter(seg["path"])
         spd = seg.get("speed", 1.0)
         pts_filter = f"setpts=(PTS-STARTPTS)/{spd:.2f}" if spd != 1.0 else "setpts=PTS-STARTPTS"
+        is_hs = seg.get("is_headshot", False)
 
-        # Full-screen 1080x1920 gameplay zoom centered on character & combat action:
-        # User requirement: "quiero que el video en los short quede en toda la pantalla pero no volteado si no puede hacerle zoom lo importante es que se vea desde el personaje y las jugadas"
+        # PDF Specification: Filtro de Reescalado y Zoom Dinámico (Impact Shakes) & Corrección de Color
+        # eq=contrast=1.18:saturation=1.35:brightness=0.02, zoompan=z='if(between(in,45,65),1.25,1.0)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'
+        color_filter = ",eq=contrast=1.18:saturation=1.35:brightness=0.02"
+        zoom_filter = ",zoompan=z='if(between(in,45,65),1.25,1.0)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=60" if is_hs else ""
+
         filter_parts.append(
             f"[{in_i}:v]{pts_filter},{rot_filter}"
-            f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2,setsar=1,fps=60[{lbl}];"
+            f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2{color_filter}{zoom_filter},setsar=1,fps=60[{lbl}];"
         )
         v_concat_labels.append(f"[{lbl}]")
 
@@ -746,10 +799,20 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         f"scale=420:240:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[cta_proc];"
     )
     filter_parts.append(
-        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=(W-w)/2:y=1600:eof_action=pass[v_overlays];"
+        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=(W-w)/2:y=1600:eof_action=pass[v_with_cta];"
     )
+    curr_v = "v_with_cta"
+
+    # 4b. Remotion KillCardOverlay (PDF Spec: Section 3 & 4)
+    # "[0:v][1:v]overlay=0:0:enable='between(t,1.2,3.8)'[outv]"
+    if remotion_in_idx is not None:
+        filter_parts.append(
+            f"[{curr_v}][{remotion_in_idx}:v]overlay=0:0:enable='between(t,1.2,3.8)':eof_action=pass[v_killcard];"
+        )
+        curr_v = "v_killcard"
 
     # 5. Burn-in Subtitles (.ass)
+    filter_parts.append(f"[{curr_v}]null[v_overlays];")
     rel_sub = "subtitles_temp_916.ass"
     if os.path.exists(rel_sub):
         filter_parts.append(f"[v_overlays]subtitles='{rel_sub}'[v_final];")
@@ -814,6 +877,13 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
 
     mix_inputs = ["[vo_spliced]", "[bgm_quiet]", "[whoosh]"]
 
+    # PDF Spec: SFX Bass Drop with ducking during impact
+    if bass_in_idx is not None:
+        filter_parts.append(
+            f"[{bass_in_idx}:a]adelay=1200|1200,volume=1.0[sfx_bass_drop];"
+        )
+        mix_inputs.append("[sfx_bass_drop]")
+
     # Visual Event SFX tracks
     for v_i, v_item in enumerate(visual_input_info):
         sfx_idx = v_item["sfx_idx"]
@@ -839,7 +909,9 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         "-map", "[a_final]",
         "-c:v", "libx264",
         "-preset", "fast",
-        "-crf", "18",
+        "-b:v", "12M",
+        "-maxrate", "15M",
+        "-bufsize", "20M",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "192k",
