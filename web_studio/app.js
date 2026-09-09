@@ -383,14 +383,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!res.ok) {
           consecutiveErrors++;
-          if (consecutiveErrors >= 10) {
+          if (consecutiveErrors >= 6) {
             clearInterval(pollInterval);
             pollInterval = null;
             updateProgress(0, 'Servidor no responde', 'Conexión interrumpida');
-            addLogLine(`[ERROR] ❌ Pérdida de comunicación con el servidor (HTTP ${res.status}).`);
+            if (res.status === 502) {
+              addLogLine(`[ERROR] ❌ Error 502 (Bad Gateway): El servidor de renderizado está apagado o no responde.`);
+              addLogLine(`[AYUDA] 💡 Asegúrate de tener 'Iniciar_Web_Studio_Movil.bat' ejecutándose en tu PC (o que tu servicio en Render/HuggingFace haya terminado de iniciar).`);
+              showToast('⚠️ Error 502: El servidor de renderizado está apagado.');
+            } else {
+              addLogLine(`[ERROR] ❌ Pérdida de comunicación con el servidor (HTTP ${res.status}).`);
+              showToast(`⚠️ Error HTTP ${res.status}: Conexión perdida.`);
+            }
             btnGenerate.disabled = false;
             btnGenerate.classList.remove('btn-disabled');
-            showToast('⚠️ Se perdió la conexión con el servidor.');
           }
           return;
         }
