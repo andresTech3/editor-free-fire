@@ -136,25 +136,45 @@ def scan_video_for_red_headshots(video_path, sample_fps=4.0):
     return headshot_moments
 
 def collect_169_gameplay_videos(custom_dir=None):
-    """Scans for gameplay clips inside /free fire jugadas/ or custom_dir, excluding emotes and memes."""
-    target_dir = Path(custom_dir) if (custom_dir and os.path.exists(custom_dir)) else JUGADAS_DIR
+    """Scans for gameplay clips inside custom_dir or /free fire jugadas/."""
+    is_custom = False
+    if custom_dir and os.path.exists(custom_dir):
+        p_c = Path(custom_dir).resolve()
+        if p_c != JUGADAS_DIR.resolve() and p_c != ASSETS_DIR.resolve():
+            is_custom = True
+            target_dir = p_c
+        else:
+            target_dir = JUGADAS_DIR
+    else:
+        target_dir = JUGADAS_DIR
+
     if not target_dir.exists():
         target_dir = ASSETS_DIR
 
     gameplay_files = []
-    exclude_kw = ["pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro"]
-    for ext in ["*.mp4", "*.mov", "*.MP4", "*.MOV", "*.avi", "*.mkv"]:
-        for f in target_dir.rglob(ext):
-            p_str = str(f).lower()
-            if any(ex in p_str for ex in exclude_kw):
-                continue
-            gameplay_files.append(f)
+    video_exts = ["*.mp4", "*.mov", "*.MP4", "*.MOV", "*.avi", "*.mkv", "*.webm", "*.m4v"]
 
-    if not gameplay_files and target_dir != JUGADAS_DIR:
-        for ext in ["*.mp4", "*.mov", "*.MP4", "*.MOV", "*.avi", "*.mkv"]:
-            for f in JUGADAS_DIR.rglob(ext):
+    if is_custom:
+        for ext in video_exts:
+            for f in target_dir.rglob(ext):
+                if "intro" in f.name.lower():
+                    continue
+                gameplay_files.append(f)
+        if gameplay_files:
+            print(f"📦 [Recursos Personalizados 16:9] Encontrados {len(gameplay_files)} videos subidos por el usuario.")
+    else:
+        exclude_kw = ["pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro"]
+        for ext in video_exts:
+            for f in target_dir.rglob(ext):
                 p_str = str(f).lower()
                 if any(ex in p_str for ex in exclude_kw):
+                    continue
+                gameplay_files.append(f)
+
+    if not gameplay_files:
+        for ext in video_exts:
+            for f in JUGADAS_DIR.rglob(ext):
+                if "intro" in f.name.lower():
                     continue
                 gameplay_files.append(f)
 
@@ -457,11 +477,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             fps_in = cap.get(cv2.CAP_PROP_FPS) or 30.0
             n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 300
             gdur = n_frames / fps_in
-            cap.release()
-
-            safe_end = max(1.0, gdur - 2.5)
-            if safe_end < 2.0:
+            if gdur < 0.5:
                 continue
+            safe_end = gdur if gdur <= 2.5 else max(1.0, gdur - 1.0)
 
             needed_dur = round(hook_duration - current_hook_dur, 2)
             tl_dur = min(needed_dur, round(random.uniform(1.8, 2.6), 2))
@@ -524,9 +542,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         gdur = n_frames / fps_in
         cap.release()
 
-        safe_end = max(1.0, gdur - 2.5)  # Avoid tail-end iPhone Control Center swipe down
-        if safe_end < 2.0:
+        if gdur < 0.5:
             continue
+        safe_end = gdur if gdur <= 2.5 else max(1.0, gdur - 1.0)
 
         r_type = rhythm_cycle[len(post_intro_segments) % len(rhythm_cycle)]
         if r_type == 'frenetic':

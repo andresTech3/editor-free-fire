@@ -147,7 +147,7 @@ class GenerateRequest(BaseModel):
 @app.post("/api/upload")
 async def upload_files(
     audio: UploadFile = File(...),
-    use_default_resources: bool = Form(True),
+    use_default_resources: Any = Form(True),
     resources: Optional[List[UploadFile]] = File(None)
 ):
     session_id = str(uuid.uuid4())[:8]
@@ -163,7 +163,13 @@ async def upload_files(
     res_dir = None
     investigation_summary = None
 
-    if use_default_resources or not resources:
+    is_default = True
+    if isinstance(use_default_resources, bool):
+        is_default = use_default_resources
+    elif isinstance(use_default_resources, str):
+        is_default = use_default_resources.strip().lower() not in ["false", "0", "no"]
+
+    if is_default or not resources:
         res_dir = ASSETS_DIR
         investigation_summary = {
             "mode": "official_default_pack",
@@ -174,6 +180,7 @@ async def upload_files(
         # Save custom uploaded resources
         custom_res_dir = session_dir / "custom_resources"
         custom_res_dir.mkdir(parents=True, exist_ok=True)
+        print(f"📥 [Server] Guardando {len(resources)} archivos subidos por el usuario en {custom_res_dir}...")
         for r_file in resources:
             if r_file.filename:
                 target_f = custom_res_dir / Path(r_file.filename).name

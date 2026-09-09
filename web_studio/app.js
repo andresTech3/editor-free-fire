@@ -275,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Step A: Upload Files
       const uploadFormData = new FormData();
       uploadFormData.append('audio', selectedAudioFile);
+      uploadFormData.append('use_default_resources', useDefaultResources ? 'true' : 'false');
 
       if (!useDefaultResources && selectedResourceFiles.length > 0) {
         for (const file of selectedResourceFiles) {

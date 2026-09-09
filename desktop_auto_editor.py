@@ -178,30 +178,53 @@ def locate_user_voiceover_audio(audio_override=None):
 
 def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
     """
-    Scans for gameplay clips inside /free fire jugadas/ or custom_dir.
-    Strictly excludes 'intro' because Shorts MUST NOT contain the intro video.
+    Scans for gameplay clips inside custom_dir or /free fire jugadas/.
+    Prioritizes user-uploaded video clips directly without aggressive keyword exclusion.
     """
     if specific_video and os.path.exists(specific_video):
         return [Path(specific_video)]
 
-    target_dir = Path(custom_dir) if (custom_dir and os.path.exists(custom_dir)) else JUGADAS_DIR
+    is_custom = False
+    if custom_dir and os.path.exists(custom_dir):
+        p_c = Path(custom_dir).resolve()
+        if p_c != JUGADAS_DIR.resolve() and p_c != PROJECT_RECURSO_DIR.resolve():
+            is_custom = True
+            target_dir = p_c
+        else:
+            target_dir = JUGADAS_DIR
+    else:
+        target_dir = JUGADAS_DIR
+
     if not target_dir.exists():
         target_dir = PROJECT_RECURSO_DIR
 
     gameplay_files = []
-    exclude_kw = ["pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro"]
-    for ext in ["*.mp4", "*.mov", "*.MP4", "*.MOV", "*.avi", "*.mkv"]:
-        for f in target_dir.rglob(ext):
-            p_str = str(f).lower()
-            if any(ex in p_str for ex in exclude_kw):
-                continue
-            gameplay_files.append(f)
+    video_exts = ["*.mp4", "*.mov", "*.MP4", "*.MOV", "*.avi", "*.mkv", "*.webm", "*.m4v"]
 
-    if not gameplay_files and target_dir != JUGADAS_DIR:
-        for ext in ["*.mp4", "*.mov", "*.MP4", "*.MOV", "*.avi", "*.mkv"]:
-            for f in JUGADAS_DIR.rglob(ext):
+    if is_custom:
+        # Collect ALL video files uploaded by the user
+        for ext in video_exts:
+            for f in target_dir.rglob(ext):
+                if "intro" in f.name.lower():
+                    continue
+                gameplay_files.append(f)
+        if gameplay_files:
+            print(f"📦 [Recursos Personalizados] Encontrados {len(gameplay_files)} videos subidos por el usuario.")
+    else:
+        exclude_kw = ["pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro"]
+        for ext in video_exts:
+            for f in target_dir.rglob(ext):
                 p_str = str(f).lower()
                 if any(ex in p_str for ex in exclude_kw):
+                    continue
+                gameplay_files.append(f)
+
+    # Fallback to official jugadas if user uploaded no video clips
+    if not gameplay_files:
+        print("ℹ️ Usando clips de jugadas maestras oficiales...")
+        for ext in video_exts:
+            for f in JUGADAS_DIR.rglob(ext):
+                if "intro" in f.name.lower():
                     continue
                 gameplay_files.append(f)
 
@@ -394,12 +417,15 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     # Sort memes chronologically by cut time in voiceover
     raw_meme_events = sorted(raw_meme_events, key=lambda x: x["time"])
 
-    # Sanitize memes to ensure clean gaps (at least 2.0s spacing, within voiceover bounds)
+    # Sanitize memes to ensure clean gaps (at least 2.5s spacing, within voiceover bounds)
+    # Crucial rule: The first 3.5 seconds of a Short are strictly reserved for the Headshot Gameplay Hook!
     meme_events = []
     last_cut = 0.0
     for m in raw_meme_events:
         t = m["time"]
-        if t >= last_cut + 2.0 and t < total_vo_dur - 0.5:
+        if t < 3.5:
+            continue
+        if t >= last_cut + 2.5 and t < total_vo_dur - 0.5:
             meme_events.append(m)
             last_cut = t
 
@@ -428,6 +454,28 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         v_copy["out_time"] = v_out_st
         v_copy["out_end"] = v_out_st + v["duration"]
         visual_events.append(v_copy)
+
+    # If user uploaded custom images/stickers, inject them as visual overlay events
+    if custom_gameplay_dir and Path(custom_gameplay_dir).exists():
+        custom_imgs = []
+        for ext in ["*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.webp"]:
+            for f in Path(custom_gameplay_dir).rglob(ext):
+                custom_imgs.append(f)
+        if custom_imgs:
+            print(f"🖼️ [Recursos Personalizados] Inyectando {len(custom_imgs)} imágenes subidas por el usuario.")
+            spacing = max(4.0, total_output_dur / (len(custom_imgs) + 1))
+            for c_i, c_img in enumerate(custom_imgs):
+                img_t = 3.8 + (c_i * spacing)
+                if img_t < total_output_dur - 2.0:
+                    visual_events.append({
+                        "time": img_t,
+                        "out_time": img_t,
+                        "duration": 3.0,
+                        "out_end": img_t + 3.0,
+                        "label": f"Custom: {c_img.name}",
+                        "asset_path": str(c_img),
+                        "type": "custom_image"
+                    })
 
     print(f"⏱️ Timeline Architecture: Voiceover = {total_vo_dur:.2f}s | Memes = {cum_meme_time:.2f}s | Total Video = {total_output_dur:.2f}s")
     print(f"🚫 Intro Status: Strictly EXCLUDED for Shorts (Duration = 0.00s)")
@@ -490,39 +538,46 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         gdur = n_frames / fps_in
         cap.release()
 
-        safe_end = max(1.0, gdur - 2.5)
-        if safe_end < 2.0:
+        if gdur < 0.5:
             continue
 
         tl_dur = round(random.uniform(1.3, 1.8), 2)
         speed = round(random.uniform(1.22, 1.38), 2)
         source_dur = round(tl_dur * speed, 2)
-        if source_dur >= safe_end - 1.0:
-            source_dur = max(1.0, safe_end - 1.0)
+
+        if gdur <= 2.2:
+            cand_start = 0.0
+            source_dur = round(gdur, 2)
             tl_dur = round(source_dur / speed, 2)
+            is_hs = False
+        else:
+            if source_dur > gdur:
+                source_dur = round(gdur - 0.1, 2)
+                tl_dur = round(source_dur / speed, 2)
 
-        # Check for red headshot timestamp
-        hs_list = headshot_map.get(gpath, [])
-        cand_start = None
-        is_hs = False
-        if hs_list:
-            for (hs_t, hs_sc) in hs_list:
-                st = max(1.0, hs_t - 0.7)
-                if st + source_dur <= safe_end:
-                    if not any(abs(st - existing) < (source_dur + 1.5) for existing in used_ranges[gpath]):
-                        cand_start = st
-                        is_hs = True
-                        break
+            # Check for red headshot timestamp
+            hs_list = headshot_map.get(gpath, [])
+            cand_start = None
+            is_hs = False
+            if hs_list:
+                for (hs_t, hs_sc) in hs_list:
+                    st = max(0.0, hs_t - 0.7)
+                    if st + source_dur <= gdur:
+                        if not any(abs(st - existing) < (source_dur + 1.0) for existing in used_ranges[gpath]):
+                            cand_start = st
+                            is_hs = True
+                            break
 
-        if cand_start is None:
-            max_st = max(1.0, safe_end - source_dur)
-            for _ in range(15):
-                st = round(random.uniform(1.0, max_st), 2)
-                if not any(abs(st - existing) < (source_dur + 1.5) for existing in used_ranges[gpath]):
-                    cand_start = st
-                    break
             if cand_start is None:
-                cand_start = 1.0
+                max_st = max(0.0, gdur - source_dur)
+                if max_st > 0:
+                    for _ in range(15):
+                        st = round(random.uniform(0.0, max_st), 2)
+                        if not any(abs(st - existing) < (source_dur + 1.0) for existing in used_ranges[gpath]):
+                            cand_start = st
+                            break
+                if cand_start is None:
+                    cand_start = 0.0
 
         used_ranges[gpath].append(cand_start)
         broll_segments.append({
@@ -781,12 +836,13 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
                 f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+m_dur:.2f})':x=(W-w)/2:y=(H-h)/2:eof_action=pass[{next_v}];"
             )
         else:
+            # For 9:16 Shorts, display standard 16:9 memes as centered floating reaction cards
             filter_parts.append(
                 f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.2f}/TB,{m_orient}"
-                f"scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0.95,setsar=1,fps=60[m_proc_{m_i}];"
+                f"scale=980:550:force_original_aspect_ratio=decrease,pad=986:556:3:3:color=white@0.3,setsar=1,fps=60[m_proc_{m_i}];"
             )
             filter_parts.append(
-                f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+m_dur:.2f})':x=0:y=0:eof_action=pass[{next_v}];"
+                f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+min(m_dur, 1.8):.2f})':x=(W-w)/2:y=(H-h)/2:eof_action=pass[{next_v}];"
             )
         curr_v = next_v
 
@@ -804,10 +860,13 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     curr_v = "v_with_cta"
 
     # 4b. Remotion KillCardOverlay (PDF Spec: Section 3 & 4)
-    # "[0:v][1:v]overlay=0:0:enable='between(t,1.2,3.8)'[outv]"
+    # Transparent overlay with colorkey so it doesn't black out the gameplay hook!
     if remotion_in_idx is not None:
         filter_parts.append(
-            f"[{curr_v}][{remotion_in_idx}:v]overlay=0:0:enable='between(t,1.2,3.8)':eof_action=pass[v_killcard];"
+            f"[{remotion_in_idx}:v]format=yuva420p,colorkey=0x000000:0.25:0.1[killcard_alpha];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][killcard_alpha]overlay=0:0:enable='between(t,1.2,3.8)':eof_action=pass[v_killcard];"
         )
         curr_v = "v_killcard"
 
