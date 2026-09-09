@@ -22,8 +22,8 @@ ENV HOME=/home/user \
 WORKDIR $HOME/app
 
 # Install Python requirements
-COPY --chown=user requirements_web.txt .
-RUN pip install --no-cache-dir --user -r requirements_web.txt
+COPY --chown=user requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Copy project files
 COPY --chown=user . $HOME/app

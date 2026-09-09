@@ -1,0 +1,33 @@
+# ── Web Server & Cloud API (Render, Hugging Face, Local) ───────────────
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+python-multipart>=0.0.6
+moviepy>=1.0.3
+pydub>=0.25.1
+
+# ── Speech Transcription (OpenAI Whisper — 100% local, gratuito) ─────────────
+openai-whisper==20231117
+# CPU-only: más liviano. Si tienes GPU Nvidia, cambia a la versión con CUDA.
+torch==2.1.0
+torchaudio==2.1.0
+
+# ── Computer Vision (face tracking / smart crop) ─────────────────────────────
+opencv-python==4.8.1.78
+Pillow==10.1.0
+
+# ── Audio Analysis (viral scoring) ───────────────────────────────────────────
+librosa==0.10.1
+soundfile==0.12.1
+numpy==1.24.4
+scipy==1.11.4
+
+# ── NLP / Sentiment (viral scoring) ──────────────────────────────────────────
+textblob==0.17.1
+nltk==3.8.1
+
+# ── CLI Interface ─────────────────────────────────────────────────────────────
+rich==13.7.0
+typer==0.9.0
+
+# ── Utilidades ────────────────────────────────────────────────────────────────
+toml==0.10.2
