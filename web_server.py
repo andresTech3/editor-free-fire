@@ -46,6 +46,36 @@ TEMP_UPLOADS_DIR = PROJECT_ROOT / "temp_uploads"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+def cleanup_temp_dir(dir_path: Optional[str]):
+    """Safely removes a temporary session directory to prevent disk bloat."""
+    if not dir_path:
+        return
+    try:
+        p = Path(dir_path).resolve()
+        temp_root = TEMP_UPLOADS_DIR.resolve()
+        # Strictly verify it is a subfolder of TEMP_UPLOADS_DIR and not root or assets
+        if temp_root in p.parents and p != temp_root and p != PROJECT_ROOT.resolve():
+            shutil.rmtree(p, ignore_errors=True)
+            print(f"🧹 [Auto-Cleanup] Recursos temporales eliminados del disco: {p.name}")
+    except Exception as e:
+        print(f"⚠️ [Auto-Cleanup] Error limpiando directorio temporal: {e}")
+
+def cleanup_all_temp_uploads():
+    """Cleans leftover directories inside temp_uploads upon server startup."""
+    try:
+        if TEMP_UPLOADS_DIR.exists():
+            for item in TEMP_UPLOADS_DIR.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                elif item.is_file():
+                    item.unlink(missing_ok=True)
+            print("🧹 [Auto-Cleanup] Carpeta temp_uploads vaciada y lista.")
+    except Exception as e:
+        print(f"⚠️ [Auto-Cleanup] Error al inicializar temp_uploads: {e}")
+
+# Clean any existing leftover temporary uploads on startup
+cleanup_all_temp_uploads()
+
 app = FastAPI(title="Codigo Headshot Mobile & Web Studio", version="26.0")
 
 app.add_middleware(
@@ -159,6 +189,7 @@ async def upload_files(
         }
 
     sessions[session_id] = {
+        "session_dir": str(session_dir),
         "audio_path": str(audio_path),
         "audio_name": audio.filename,
         "resources_dir": str(res_dir),
@@ -175,7 +206,7 @@ async def upload_files(
         "investigation": investigation_summary
     }
 
-def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
+def run_editor_process(job_id: str, cmd: List[str], target_file: Path, session_dir: Optional[str] = None):
     """Executes editing subprocess, parsing progress from output lines."""
     with jobs_lock:
         jobs[job_id]["status"] = "processing"
@@ -227,6 +258,10 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
 
         proc.wait()
 
+        # Limpiar automáticamente los archivos temporales subidos por el usuario (audio y clips personalizados)
+        if session_dir:
+            cleanup_temp_dir(session_dir)
+
         if proc.returncode == 0 and target_file.exists():
             with jobs_lock:
                 jobs[job_id]["status"] = "completed"
@@ -251,15 +286,29 @@ def run_editor_process(job_id: str, cmd: List[str], target_file: Path):
 async def generate_video(payload: GenerateRequest):
     audio_path = None
     res_dir = None
+    session_dir = None
 
     if payload.session_id and payload.session_id in sessions:
         session = sessions[payload.session_id]
         audio_path = session.get("audio_path")
         res_dir = session.get("resources_dir")
+        session_dir = session.get("session_dir")
     
     if not audio_path and payload.audio_path:
         audio_path = payload.audio_path
     
+    if not session_dir and audio_path:
+        try:
+            p = Path(audio_path).resolve()
+            temp_root = TEMP_UPLOADS_DIR.resolve()
+            if temp_root in p.parents:
+                for parent in p.parents:
+                    if parent.parent == temp_root:
+                        session_dir = str(parent)
+                        break
+        except Exception:
+            pass
+
     if not res_dir:
         res_dir = payload.resources_dir or str(ASSETS_DIR)
 
@@ -315,7 +364,7 @@ async def generate_video(payload: GenerateRequest):
 
     thread = threading.Thread(
         target=run_editor_process,
-        args=(job_id, cmd, target_output_file),
+        args=(job_id, cmd, target_output_file, session_dir),
         daemon=True
     )
     thread.start()
