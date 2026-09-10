@@ -177,31 +177,58 @@ class FreeFireEditorApp(tk.Tk):
             command=open_web_studio
         ).pack(side="right", padx=16, pady=8)
 
-        # ── BOTTOM: NOMBRE DE ARCHIVO + GENERATE BUTTON + STATUS ───────────────────────
+        # ── BOTTOM: DESTINO Y SALIDA DEL VIDEO FINAL + GENERATE BUTTON + STATUS ──
         bottom = tk.Frame(self, bg=BG)
         bottom.pack(side="bottom", fill="x", padx=16, pady=8)
 
-        # Filename row — always visible above the generate button
-        row_name = tk.Frame(bottom, bg=BG)
-        row_name.pack(fill="x", pady=(0, 6))
+        # Dedicated Output Destination Box (Always visible above the generate button)
+        box_out = tk.LabelFrame(
+            bottom, text=" 💾 DESTINO Y SALIDA DEL VIDEO FINAL ",
+            font=("Segoe UI", 9, "bold"), fg=GOLD, bg=CARD, bd=1, relief="solid", padx=10, pady=8
+        )
+        box_out.pack(fill="x", pady=(0, 8))
+
+        # Row 1: Output directory selection
+        row_dir = tk.Frame(box_out, bg=CARD)
+        row_dir.pack(fill="x", pady=(0, 6))
 
         tk.Label(
-            row_name,
-            text="💾  Nombre del archivo de salida (.mp4):",
-            font=("Segoe UI", 9, "bold"), fg=GOLD, bg=BG
-        ).pack(side="left", padx=(0, 8))
+            row_dir, text="📁 Carpeta de Guardado:",
+            font=("Segoe UI", 9, "bold"), fg=WHITE, bg=CARD, width=22, anchor="w"
+        ).pack(side="left")
         tk.Entry(
-            row_name,
-            textvariable=self.out_name_var,
-            font=("Consolas", 10, "bold"),
-            bg="#1A1D27", fg=GOLD, insertbackground=GOLD,
-            bd=1, relief="solid", width=36
-        ).pack(side="left", ipady=4)
+            row_dir, textvariable=self.out_dir_var,
+            font=("Consolas", 9), bg="#1A1D27", fg=WHITE, insertbackground=WHITE,
+            bd=1, relief="solid"
+        ).pack(side="left", fill="x", expand=True, ipady=3, padx=(0, 6))
+        tk.Button(
+            row_dir, text="📁 Cambiar Carpeta", font=("Segoe UI", 9, "bold"),
+            bg=GOLD, fg="#000", bd=0, padx=10, pady=3, cursor="hand2",
+            command=self.browse_output_dir
+        ).pack(side="left", padx=(0, 4))
+        tk.Button(
+            row_dir, text="📂 Abrir", font=("Segoe UI", 9),
+            bg=BTN_DIM, fg=WHITE, bd=0, padx=8, pady=3, cursor="hand2",
+            command=self.open_output_dir
+        ).pack(side="left")
+
+        # Row 2: Output filename
+        row_name = tk.Frame(box_out, bg=CARD)
+        row_name.pack(fill="x")
+
         tk.Label(
-            row_name,
-            text="(sin extensión, se agrega .mp4 solo)",
-            font=("Segoe UI", 8), fg=SUB, bg=BG
-        ).pack(side="left", padx=(8, 0))
+            row_name, text="🏷️ Nombre del Video (.mp4):",
+            font=("Segoe UI", 9, "bold"), fg=GOLD, bg=CARD, width=22, anchor="w"
+        ).pack(side="left")
+        tk.Entry(
+            row_name, textvariable=self.out_name_var,
+            font=("Consolas", 10, "bold"), bg="#1A1D27", fg=GOLD, insertbackground=GOLD,
+            bd=1, relief="solid"
+        ).pack(side="left", fill="x", expand=True, ipady=3, padx=(0, 8))
+        tk.Label(
+            row_name, text="(automáticamente se guarda aquí)",
+            font=("Segoe UI", 8), fg=SUB, bg=CARD
+        ).pack(side="left")
 
         self.btn_generate = tk.Button(
             bottom, text="🔥 EDITAR VIDEO EN HEADSHOT STUDIO  >>>",
@@ -441,6 +468,15 @@ class FreeFireEditorApp(tk.Tk):
         d = filedialog.askdirectory(title="Carpeta de Destino", initialdir=self.out_dir_var.get())
         if d:
             self.out_dir_var.set(d)
+
+    def open_output_dir(self):
+        d = self.out_dir_var.get().strip() or str(DEFAULT_OUTPUT_DIR)
+        p = Path(d)
+        p.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(p))
+        except Exception:
+            messagebox.showinfo("Carpeta de Salida", f"Ubicación:\n{p}")
 
     def open_final_video(self):
         target = (self.last_rendered_file

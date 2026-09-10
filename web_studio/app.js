@@ -321,13 +321,18 @@ document.addEventListener('DOMContentLoaded', () => {
       updateProgress(15, 'Iniciando pipeline de edición...', 'Configurando motor de video');
       setMilestone(msWhisper, 'active');
 
+      const outNameVal = document.getElementById('outNameInput')?.value?.trim() || null;
+      const outDirVal = document.getElementById('outDirInput')?.value?.trim() || null;
+
       const genPayload = {
         session_id: uploadData.session_id,
         audio_path: uploadData.audio_path,
         resources_dir: uploadData.resources_dir || null,
         aspect_ratio: selectedRatio,
         speed: speedVal,
-        hook_preference: hookVal
+        hook_preference: hookVal,
+        outname: outNameVal,
+        outdir: outDirVal
       };
 
       const genRes = await fetch(buildApiUrl('/api/generate'), {

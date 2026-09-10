@@ -143,6 +143,8 @@ class GenerateRequest(BaseModel):
     hook_mode: Optional[str] = "auto"
     hook_preference: Optional[str] = None
     bgm: Optional[bool] = True
+    outname: Optional[str] = None
+    outdir: Optional[str] = None
 
 @app.post("/api/upload")
 async def upload_files(
@@ -328,8 +330,22 @@ async def generate_video(payload: GenerateRequest):
     bgm = payload.bgm if payload.bgm is not None else True
 
     job_id = str(uuid.uuid4())[:8]
-    out_filename = f"video_{aspect.replace(':', 'x')}_{job_id}.mp4"
-    target_output_file = OUTPUT_DIR / out_filename
+    out_dir_target = OUTPUT_DIR
+    if payload.outdir and payload.outdir.strip():
+        try:
+            out_dir_target = Path(payload.outdir.strip()).resolve()
+            out_dir_target.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            out_dir_target = OUTPUT_DIR
+
+    if payload.outname and payload.outname.strip():
+        out_filename = payload.outname.strip()
+        if not out_filename.lower().endswith(".mp4"):
+            out_filename += ".mp4"
+    else:
+        out_filename = f"video_{aspect.replace(':', 'x')}_{job_id}.mp4"
+
+    target_output_file = out_dir_target / out_filename
 
     if aspect == "16:9":
         # Launch Master Long Video Engine (YouTube 16:9 widescreen)
@@ -339,7 +355,7 @@ async def generate_video(payload: GenerateRequest):
             str(PROJECT_ROOT / "long_video_engine.py"),
             "--audio", str(audio_path),
             "--gameplay", str(res_dir),
-            "--outdir", str(OUTPUT_DIR),
+            "--outdir", str(out_dir_target),
             "--outname", out_filename
         ]
     else:
@@ -351,7 +367,7 @@ async def generate_video(payload: GenerateRequest):
             "--aspect", "9:16",
             "--audio", str(audio_path),
             "--resdir", str(res_dir),
-            "--outdir", str(OUTPUT_DIR),
+            "--outdir", str(out_dir_target),
             "--outname", out_filename,
             "--speed", str(speed),
             "--hook", hook_mode,

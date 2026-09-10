@@ -190,6 +190,28 @@
       </div>
     </section>
 
+    <!-- STEP 4: SALIDA & GUARDADO DEL VIDEO -->
+    <section class="card step-card" id="stepOutputCard">
+      <div class="card-header">
+        <div class="step-num">4</div>
+        <div>
+          <h2 class="card-title">Salida y Guardado del Video</h2>
+          <p class="card-desc">Personaliza el nombre del archivo y la carpeta donde se guardará en tu PC</p>
+        </div>
+      </div>
+
+      <div class="options-row" style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+        <div class="option-item" style="width: 100%;">
+          <label for="outNameInput" class="option-label" style="display: block; margin-bottom: 6px; font-weight: 600;">🏷️ Nombre del Video (.mp4):</label>
+          <input type="text" id="outNameInput" placeholder="freefire_headshot_viral.mp4" value="freefire_headshot_viral.mp4" style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,215,0,0.4); border-radius: 8px; color: #FFD700; font-family: monospace; font-size: 14px;">
+        </div>
+        <div class="option-item" style="width: 100%;">
+          <label for="outDirInput" class="option-label" style="display: block; margin-bottom: 6px; font-weight: 600;">📁 Carpeta de Guardado en tu PC:</label>
+          <input type="text" id="outDirInput" placeholder="output" value="output" style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #FFF; font-size: 13px;">
+        </div>
+      </div>
+    </section>
+
     <!-- ACTION BUTTON -->
     <div class="action-container">
       <button type="button" class="btn-generate-main" id="btnGenerate">
