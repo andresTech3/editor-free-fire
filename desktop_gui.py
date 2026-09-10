@@ -78,6 +78,7 @@ class FreeFireEditorApp(tk.Tk):
         self.out_name_var     = tk.StringVar(value="freefire_headshot_viral.mp4")
         self.speed_ramp_var   = tk.StringVar(value="1.5x Frenetico (Recomendado)")
         self.aspect_var       = tk.StringVar(value="9:16")
+        self.engine_mode_var  = tk.StringVar(value="Clásico (Fluido y Seguro - Recomendado)")
         self.last_rendered_file = None
 
         self._build()
@@ -284,6 +285,18 @@ class FreeFireEditorApp(tk.Tk):
             activebackground=CARD, cursor="hand2"
         ).pack(anchor="w")
 
+        # ── 6. MOTOR DE EDICIÓN ───────────────────────────────────────────────
+        f_engine = lf(right, "6. Motor de Edición y Síntesis", GOLD)
+        f_engine.pack(fill="x", pady=(0, 8))
+        lbl(f_engine, "Algoritmo de Edición:").pack(anchor="w")
+        ttk.Combobox(
+            f_engine, textvariable=self.engine_mode_var, state="readonly", width=46,
+            values=[
+                "Clásico (Fluido y Seguro - Recomendado)",
+                "Síntesis Dinámica (Whisper + Librosa Beat Sync + 3D Hook)"
+            ]
+        ).pack(anchor="w", pady=(3, 2))
+
     # ── Actions ───────────────────────────────────────────────────────────────
     def browse_audio(self):
         p = filedialog.askopenfilename(
@@ -387,7 +400,19 @@ class FreeFireEditorApp(tk.Tk):
 
     def _run(self, audio_file, gameplay_file, resources_dir, hook_flag, out_dir, out_name, speed_val, music_choice, aspect_flag):
         try:
-            if aspect_flag == "16:9":
+            if "Síntesis" in self.engine_mode_var.get():
+                cmd = [
+                    sys.executable,
+                    str(PROJECT_ROOT / "generate_video.py"),
+                    "--aspect",  aspect_flag,
+                    "--outdir",  out_dir,
+                    "--outname", out_name,
+                ]
+                if audio_file and os.path.exists(audio_file):
+                    cmd.extend(["--audio", audio_file])
+                if resources_dir and os.path.exists(resources_dir):
+                    cmd.extend(["--assets_dir", resources_dir])
+            elif aspect_flag == "16:9":
                 cmd = [
                     sys.executable,
                     str(PROJECT_ROOT / "long_video_engine.py"),
