@@ -1,9 +1,10 @@
 """
-desktop_gui.py — Modern Interactive Studio GUI for Free Fire Short Video Generator (v24.1)
+desktop_gui.py — Modern Interactive Studio GUI for Free Fire Short Video Generator (v26.2)
 ===========================================================================================
-Layout v24.1: 2-COLUMN WIDE layout (1180x580) to avoid vertical overflow on screen.
-  - Left column:  Audio, Formato, Destino/Nombre
-  - Right column: Musica/Speed, Hook, Formato/Boton
+Layout v26.2: 2-COLUMN WIDE layout (1280x820) with Tab panel on right column.
+  - Left column (scrollable):  Recursos, Audio, Formato, Destino/Nombre
+  - Right column (Notebook tabs): Música/Speed | Hook | Motor de Edición
+  - All sections always visible, no overflow.
 """
 
 import os
@@ -47,12 +48,12 @@ def lf(parent, title, color=WHITE, **kw):
     """Helper: styled LabelFrame."""
     return tk.LabelFrame(
         parent, text=f" {title} ",
-        font=("Segoe UI", 10, "bold"), fg=color, bg=CARD,
-        bd=1, relief="solid", padx=10, pady=6, **kw
+        font=("Segoe UI", 9, "bold"), fg=color, bg=CARD,
+        bd=1, relief="solid", padx=8, pady=4, **kw
     )
 
 def lbl(parent, text, fg=SUB):
-    return tk.Label(parent, text=text, font=("Segoe UI", 9), fg=fg, bg=CARD)
+    return tk.Label(parent, text=text, font=("Segoe UI", 8), fg=fg, bg=CARD)
 
 def entry(parent, var, fg=WHITE, font=("Consolas", 9)):
     return tk.Entry(
@@ -62,33 +63,71 @@ def entry(parent, var, fg=WHITE, font=("Consolas", 9)):
 
 def btn(parent, text, cmd, bg=BTN_DIM, fg=WHITE, abg=GOLD, afg="#000"):
     return tk.Button(
-        parent, text=text, font=("Segoe UI", 9, "bold"),
+        parent, text=text, font=("Segoe UI", 8, "bold"),
         bg=bg, fg=fg, activebackground=abg, activeforeground=afg,
-        bd=0, padx=10, pady=3, cursor="hand2", command=cmd
+        bd=0, padx=8, pady=3, cursor="hand2", command=cmd
     )
+
+
+class ScrollableFrame(tk.Frame):
+    """A vertically scrollable frame container."""
+    def __init__(self, parent, bg=BG, **kw):
+        super().__init__(parent, bg=bg, **kw)
+        self.canvas = tk.Canvas(self, bg=bg, bd=0, highlightthickness=0)
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=vsb.set)
+
+        vsb.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.inner = tk.Frame(self.canvas, bg=bg)
+        self._win = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
+
+        self.inner.bind("<Configure>", self._on_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.inner.bind("<MouseWheel>", self._on_mousewheel)
+
+    def _on_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfig(self._win, width=event.width)
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
 
 class FreeFireEditorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Codigo Headshot Studio — Free Fire Viral Editor v24.1")
-        self.geometry("1180x680")
+        self.title("Codigo Headshot Studio — Free Fire Viral Editor v26.2")
+        self.geometry("1280x820")
+        self.minsize(1100, 700)
         self.resizable(True, True)
         self.configure(bg=BG)
 
+        # Style notebook
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=BTN_DIM, foreground=WHITE,
+                         font=("Segoe UI", 9, "bold"), padding=[10, 5])
+        style.map("TNotebook.Tab", background=[("selected", CARD)], foreground=[("selected", GOLD)])
+
         # State vars
-        self.audio_path_var   = tk.StringVar()
+        self.audio_path_var    = tk.StringVar()
         self.gameplay_file_var = tk.StringVar()
         self.resources_dir_var = tk.StringVar(value=str(JUGADAS_DIR))
-        self.bgm_enable_var   = tk.BooleanVar(value=True)
+        self.bgm_enable_var    = tk.BooleanVar(value=True)
         self.selected_music_var = tk.StringVar(value="Aleatorio")
-        self.hook_mode_var    = tk.StringVar(value="Deteccion Automatica")
-        self.variation_var    = tk.BooleanVar(value=True)
-        self.out_dir_var      = tk.StringVar(value=str(DEFAULT_OUTPUT_DIR))
-        self.out_name_var     = tk.StringVar(value="freefire_headshot_viral.mp4")
-        self.speed_ramp_var   = tk.StringVar(value="1.5x Frenetico (Recomendado)")
-        self.aspect_var       = tk.StringVar(value="9:16")
-        self.engine_mode_var  = tk.StringVar(value="Clásico (Fluido y Seguro - Recomendado)")
+        self.hook_mode_var     = tk.StringVar(value="Deteccion Automatica")
+        self.variation_var     = tk.BooleanVar(value=True)
+        self.out_dir_var       = tk.StringVar(value=str(DEFAULT_OUTPUT_DIR))
+        self.out_name_var      = tk.StringVar(value="freefire_headshot_viral.mp4")
+        self.speed_ramp_var    = tk.StringVar(value="1.5x Frenetico (Recomendado)")
+        self.aspect_var        = tk.StringVar(value="9:16")
+        self.engine_mode_var   = tk.StringVar(value="Clasico (Fluido y Seguro - Recomendado)")
         self.last_rendered_file = None
 
         self._build()
@@ -111,7 +150,7 @@ class FreeFireEditorApp(tk.Tk):
         if d and os.path.exists(d):
             p = Path(d)
             vids = sum(len(list(p.rglob(f"*{e}"))) + len(list(p.rglob(f"*{e.upper()}"))) for e in [".mp4",".mov",".avi",".mkv"])
-            self.lbl_resources.config(text=f"OK  {p.name} ({vids} jugadas/videos encontrados)", fg="#10B981")
+            self.lbl_resources.config(text=f"OK  {p.name} ({vids} videos)", fg="#10B981")
         else:
             self.lbl_resources.config(text="Carpeta no encontrada", fg="#EF4444")
 
@@ -120,34 +159,35 @@ class FreeFireEditorApp(tk.Tk):
         # ── HEADER ──────────────────────────────────────────────────────────
         hdr = tk.Frame(self, bg=CARD)
         hdr.pack(side="top", fill="x")
-        tk.Label(hdr, text="CODIGO HEADSHOT STUDIO — FRENETICO  v26.0",
-                 font=("Impact", 22), fg=GOLD, bg=CARD).pack(side="left", padx=20, pady=10)
-        tk.Label(hdr, text="Selecciona Tu Video o Carpeta  |  Motor Frenetico  |  Subtítulos & Memes  |  Zoom Impacto",
-                 font=("Segoe UI", 10), fg=SUB, bg=CARD).pack(side="left", padx=0, pady=10)
+
+        tk.Label(hdr, text="CODIGO HEADSHOT STUDIO  v26.2",
+                 font=("Impact", 20), fg=GOLD, bg=CARD).pack(side="left", padx=16, pady=8)
+        tk.Label(hdr, text="Video | Audio | Motor | Formato | Destino",
+                 font=("Segoe UI", 9), fg=SUB, bg=CARD).pack(side="left", padx=0, pady=8)
 
         def open_web_studio():
             import webbrowser
             webbrowser.open("http://localhost:8000")
 
         tk.Button(
-            hdr, text="📱 Abrir Web Studio Móvil",
-            font=("Segoe UI", 10, "bold"), bg=RED, fg=WHITE,
+            hdr, text="📱 Web Studio Movil",
+            font=("Segoe UI", 9, "bold"), bg=RED, fg=WHITE,
             activebackground=GOLD, activeforeground="#000",
-            bd=0, padx=12, pady=6, cursor="hand2",
+            bd=0, padx=10, pady=5, cursor="hand2",
             command=open_web_studio
-        ).pack(side="right", padx=20, pady=10)
+        ).pack(side="right", padx=16, pady=8)
 
-        # ── BOTTOM: GENERATE BUTTON + STATUS (Anchored at bottom first) ──────
+        # ── BOTTOM: GENERATE BUTTON + STATUS ──────────────────────────────────
         bottom = tk.Frame(self, bg=BG)
-        bottom.pack(side="bottom", fill="x", padx=18, pady=10)
+        bottom.pack(side="bottom", fill="x", padx=16, pady=8)
 
         self.btn_generate = tk.Button(
-            bottom, text="🔥 EDITAR VIDEO SELECCIONADO EN HEADSHOT STUDIO  >>>",
-            font=("Impact", 18), bg=RED, fg=WHITE,
+            bottom, text="🔥 EDITAR VIDEO EN HEADSHOT STUDIO  >>>",
+            font=("Impact", 17), bg=RED, fg=WHITE,
             activebackground=GOLD, activeforeground="#000",
-            bd=0, pady=10, cursor="hand2", command=self.start_generation
+            bd=0, pady=8, cursor="hand2", command=self.start_generation
         )
-        self.btn_generate.pack(fill="x", pady=(0, 6))
+        self.btn_generate.pack(fill="x", pady=(0, 4))
 
         row_status = tk.Frame(bottom, bg=BG)
         row_status.pack(fill="x")
@@ -162,98 +202,109 @@ class FreeFireEditorApp(tk.Tk):
         self.btn_open_video = tk.Button(
             row_status, text="Abrir Video Final",
             font=("Segoe UI", 9, "bold"), bg=BTN_DIM, fg=GOLD,
-            bd=0, padx=14, pady=4, cursor="hand2", command=self.open_final_video
+            bd=0, padx=12, pady=4, cursor="hand2", command=self.open_final_video
         )
 
         # ── MAIN 2-COLUMN BODY ───────────────────────────────────────────────
         body = tk.Frame(self, bg=BG)
-        body.pack(side="top", fill="both", expand=True, padx=18, pady=(8, 4))
+        body.pack(side="top", fill="both", expand=True, padx=16, pady=(6, 2))
         body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=1)
 
-        left  = tk.Frame(body, bg=BG)
+        # Left: scrollable
+        left_wrap = ScrollableFrame(body, bg=BG)
+        left_wrap.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        left = left_wrap.inner
+
+        # Right: static (notebook)
         right = tk.Frame(body, bg=BG)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        right.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
 
         # ════════ LEFT COLUMN ════════════════════════════════════════════════
 
         # ── 1. RECURSOS Y VIDEO PRINCIPAL ─────────────────────────────────────
         f_gameplay = lf(left, "1. Video o Carpeta de Jugadas (Gameplays)", RED)
-        f_gameplay.pack(fill="x", pady=(0, 8))
+        f_gameplay.pack(fill="x", pady=(0, 6))
 
-        # Opción A: Video Individual
-        lbl(f_gameplay, "Opción A: Sube un Video Individual (.mp4, .mov) [Opcional]:").pack(anchor="w")
-        row_g = tk.Frame(f_gameplay, bg=CARD); row_g.pack(fill="x", pady=(2, 4))
-        entry(row_g, self.gameplay_file_var).pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 6))
+        lbl(f_gameplay, "Opcion A: Video Individual (.mp4 / .mov) [Opcional]:").pack(anchor="w")
+        row_g = tk.Frame(f_gameplay, bg=CARD)
+        row_g.pack(fill="x", pady=(2, 3))
+        entry(row_g, self.gameplay_file_var).pack(side="left", fill="x", expand=True, ipady=3, padx=(0, 5))
         btn(row_g, "📁 Seleccionar Video", self.browse_gameplay, abg=RED, afg=WHITE).pack(side="right")
         self.lbl_gameplay = lbl(f_gameplay, "Si no seleccionas uno, usaremos la carpeta de jugadas", fg=SUB)
-        self.lbl_gameplay.pack(anchor="w", pady=(0, 4))
+        self.lbl_gameplay.pack(anchor="w", pady=(0, 3))
 
-        # Opción B: Carpeta de Jugadas
-        lbl(f_gameplay, "Opción B: Carpeta de Jugadas (assets/Recurso video Freefire/free fire jugadas):").pack(anchor="w")
-        row_r = tk.Frame(f_gameplay, bg=CARD); row_r.pack(fill="x", pady=(2, 4))
-        entry(row_r, self.resources_dir_var).pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 6))
+        lbl(f_gameplay, "Opcion B: Carpeta de Jugadas:").pack(anchor="w")
+        row_r = tk.Frame(f_gameplay, bg=CARD)
+        row_r.pack(fill="x", pady=(2, 3))
+        entry(row_r, self.resources_dir_var).pack(side="left", fill="x", expand=True, ipady=3, padx=(0, 5))
         btn(row_r, "📂 Cambiar Carpeta", self.browse_resources, abg=GOLD, afg="#000").pack(side="right")
         self.lbl_resources = lbl(f_gameplay, "Cargando jugadas...", fg=SUB)
         self.lbl_resources.pack(anchor="w", pady=(0, 2))
         self._update_resources_count(str(JUGADAS_DIR))
 
         # ── 1B. AUDIO DE VOZ ──────────────────────────────────────────────────
-        f_audio = lf(left, "1B. Audio de Voz / Locución (Opcional)", GOLD)
-        f_audio.pack(fill="x", pady=(0, 8))
+        f_audio = lf(left, "1B. Audio de Voz / Locucion (Opcional)", GOLD)
+        f_audio.pack(fill="x", pady=(0, 6))
 
-        lbl(f_audio, "Sube tu audio de voz (si no subes uno, usaremos el audio de tu video o carpeta):").pack(anchor="w")
-        row_a = tk.Frame(f_audio, bg=CARD); row_a.pack(fill="x", pady=(3, 0))
-        entry(row_a, self.audio_path_var).pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 6))
+        lbl(f_audio, "Audio de locución (si no subes, usaremos el audio del video):").pack(anchor="w")
+        row_a = tk.Frame(f_audio, bg=CARD)
+        row_a.pack(fill="x", pady=(2, 0))
+        entry(row_a, self.audio_path_var).pack(side="left", fill="x", expand=True, ipady=3, padx=(0, 5))
         btn(row_a, "Seleccionar Audio", self.browse_audio, abg=GOLD, afg="#000").pack(side="right")
-        self.lbl_audio = lbl(f_audio, "Audio de locución opcional", fg=SUB)
-        self.lbl_audio.pack(anchor="w", pady=(3, 0))
+        self.lbl_audio = lbl(f_audio, "Audio de locucion opcional", fg=SUB)
+        self.lbl_audio.pack(anchor="w", pady=(2, 0))
 
         # ── 2. FORMATO DE VIDEO ───────────────────────────────────────────────
         f_fmt = lf(left, "2. Formato de Salida", BLUE)
-        f_fmt.pack(fill="x", pady=(0, 8))
+        f_fmt.pack(fill="x", pady=(0, 6))
 
-        fmt_row = tk.Frame(f_fmt, bg=CARD); fmt_row.pack(fill="x")
+        fmt_row = tk.Frame(f_fmt, bg=CARD)
+        fmt_row.pack(fill="x")
 
-        def rb(parent, text, val, col):
+        def rb(parent, text, val):
             tk.Radiobutton(
                 parent, text=text, variable=self.aspect_var, value=val,
-                font=("Segoe UI", 10, "bold"), fg=WHITE, bg=CARD,
+                font=("Segoe UI", 9, "bold"), fg=WHITE, bg=CARD,
                 selectcolor=RED if val == "9:16" else GOLD,
                 activebackground=CARD, cursor="hand2"
-            ).pack(side="left", padx=(0, 20))
+            ).pack(side="left", padx=(0, 18))
 
-        rb(fmt_row, "9:16  Vertical  (Shorts / TikTok / Reels)", "9:16", 0)
-        rb(fmt_row, "16:9  Horizontal  (YouTube / Facebook)", "16:9", 1)
+        rb(fmt_row, "9:16  Vertical  (Shorts / TikTok / Reels)", "9:16")
+        rb(fmt_row, "16:9  Horizontal  (YouTube / Facebook)", "16:9")
 
         # ── 3. DESTINO & NOMBRE ───────────────────────────────────────────────
-        f_dest = lf(left, "3. Carpeta de Guardado y Nombre del Video", WHITE)
-        f_dest.pack(fill="x", pady=(0, 8))
+        f_dest = lf(left, "3. Carpeta de Guardado y Nombre", WHITE)
+        f_dest.pack(fill="x", pady=(0, 6))
 
         lbl(f_dest, "Carpeta de destino:").pack(anchor="w")
-        row_d = tk.Frame(f_dest, bg=CARD); row_d.pack(fill="x", pady=(3, 6))
-        entry(row_d, self.out_dir_var).pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 6))
-        btn(row_d, "Cambiar Carpeta", self.browse_output_dir).pack(side="right")
+        row_d = tk.Frame(f_dest, bg=CARD)
+        row_d.pack(fill="x", pady=(2, 5))
+        entry(row_d, self.out_dir_var).pack(side="left", fill="x", expand=True, ipady=3, padx=(0, 5))
+        btn(row_d, "Cambiar", self.browse_output_dir).pack(side="right")
 
         lbl(f_dest, "Nombre del archivo (.mp4):").pack(anchor="w")
-        entry(f_dest, self.out_name_var, fg=GOLD, font=("Consolas", 10, "bold")).pack(
-            fill="x", ipady=4, pady=(3, 0))
+        entry(f_dest, self.out_name_var, fg=GOLD, font=("Consolas", 9, "bold")).pack(
+            fill="x", ipady=3, pady=(2, 0))
 
-        # ════════ RIGHT COLUMN ═══════════════════════════════════════════════
+        # ════════ RIGHT COLUMN — Notebook Tabs ══════════════════════════════
 
-        # ── 4. MUSICA & VELOCIDAD ─────────────────────────────────────────────
-        f_mus = lf(right, "4. Musica de Fondo y Velocidad", GOLD)
-        f_mus.pack(fill="x", pady=(0, 8))
+        nb = ttk.Notebook(right)
+        nb.pack(fill="both", expand=True)
+
+        # ── Tab A: Música & Velocidad ─────────────────────────────────────────
+        tab_mus = tk.Frame(nb, bg=CARD, padx=10, pady=8)
+        nb.add(tab_mus, text="🎵  Música & Velocidad")
 
         tk.Checkbutton(
-            f_mus, text="Incluir Musica de Fondo  (Bucle Infinito, -18dB)",
-            variable=self.bgm_enable_var, font=("Segoe UI", 10, "bold"),
+            tab_mus, text="Incluir Musica de Fondo  (Bucle Infinito, -18dB)",
+            variable=self.bgm_enable_var, font=("Segoe UI", 9, "bold"),
             fg=WHITE, bg=CARD, selectcolor=BG,
             activebackground=CARD, cursor="hand2"
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, 8))
 
-        g = tk.Frame(f_mus, bg=CARD); g.pack(fill="x")
+        g = tk.Frame(tab_mus, bg=CARD)
+        g.pack(fill="x")
 
         lbl(g, "Pista de musica:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         self.cb_track = ttk.Combobox(g, textvariable=self.selected_music_var,
@@ -264,7 +315,7 @@ class FreeFireEditorApp(tk.Tk):
                   cursor="hand2", command=self.refresh_music
                   ).grid(row=0, column=2, padx=(6, 0))
 
-        lbl(g, "Speed Ramp:").grid(row=1, column=0, sticky="w", pady=(6, 0), padx=(0, 8))
+        lbl(g, "Speed Ramp:").grid(row=1, column=0, sticky="w", pady=(8, 0), padx=(0, 8))
         ttk.Combobox(
             g, textvariable=self.speed_ramp_var, state="readonly", width=34,
             values=[
@@ -272,40 +323,70 @@ class FreeFireEditorApp(tk.Tk):
                 "1.8x Extremo (Ultra Rapido)",
                 "1.0x Normal (Estandar)"
             ]
-        ).grid(row=1, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        ).grid(row=1, column=1, columnspan=2, sticky="w", pady=(8, 0))
 
-        # ── 5. HOOK & VARIACION ───────────────────────────────────────────────
-        f_hook = lf(right, "5. Modo de Entrada (Hook) y Variacion", WHITE)
-        f_hook.pack(fill="x", pady=(0, 8))
+        # ── Tab B: Hook & Variación ───────────────────────────────────────────
+        tab_hook = tk.Frame(nb, bg=CARD, padx=10, pady=8)
+        nb.add(tab_hook, text="🎣  Hook & Variacion")
 
-        lbl(f_hook, "Primer Clip del Video:").pack(anchor="w")
+        lbl(tab_hook, "Primer Clip del Video (Hook de Entrada):").pack(anchor="w")
         ttk.Combobox(
-            f_hook, textvariable=self.hook_mode_var, state="readonly", width=46,
+            tab_hook, textvariable=self.hook_mode_var, state="readonly", width=44,
             values=[
                 "Deteccion Automatica",
                 "Forzar Entrada Rojo (Headshot)",
                 "Forzar Entrada Amarillo (Fallando)"
             ]
-        ).pack(anchor="w", pady=(3, 6))
+        ).pack(anchor="w", pady=(4, 10))
+
         tk.Checkbutton(
-            f_hook,
+            tab_hook,
             text="Garantizar Variacion Unica & Seleccion Frenetica por Movimiento",
             variable=self.variation_var, font=("Segoe UI", 9, "bold"),
             fg=GOLD, bg=CARD, selectcolor=BG,
             activebackground=CARD, cursor="hand2"
         ).pack(anchor="w")
 
-        # ── 6. MOTOR DE EDICIÓN ───────────────────────────────────────────────
-        f_engine = lf(right, "6. Motor de Edición y Síntesis", GOLD)
-        f_engine.pack(fill="x", pady=(0, 8))
-        lbl(f_engine, "Algoritmo de Edición:").pack(anchor="w")
-        ttk.Combobox(
-            f_engine, textvariable=self.engine_mode_var, state="readonly", width=46,
-            values=[
-                "Clásico (Fluido y Seguro - Recomendado)",
-                "Síntesis Dinámica (Whisper + Librosa Beat Sync + 3D Hook)"
-            ]
-        ).pack(anchor="w", pady=(3, 2))
+        lbl(tab_hook, "\nEsta opcion asegura que cada video tenga clips y jugadas distintas.", fg=SUB).pack(anchor="w")
+
+        # ── Tab C: Motor de Edición ───────────────────────────────────────────
+        tab_eng = tk.Frame(nb, bg=CARD, padx=10, pady=8)
+        nb.add(tab_eng, text="⚙️  Motor de Edicion")
+
+        lbl(tab_eng, "Selecciona el motor de edicion a utilizar:", fg=WHITE).pack(anchor="w")
+
+        engine_frame = tk.Frame(tab_eng, bg=CARD)
+        engine_frame.pack(fill="x", pady=(6, 0))
+
+        engines = [
+            ("Clasico (Fluido y Seguro - Recomendado)",
+             "Motor probado. Cortes fluidos al ritmo de la voz.\nIdeal para la mayoria de videos.",
+             GOLD),
+            ("Sintesis Dinamica (Whisper + Librosa Beat Sync + 3D Hook)",
+             "Motor avanzado. Analiza la voz con IA (Whisper),\nsincroniza cortes con la musica (Librosa) y aplica efectos 3D.",
+             BLUE),
+        ]
+
+        self._engine_btns = []
+        for eng_val, eng_desc, eng_color in engines:
+            frm = tk.Frame(engine_frame, bg=BTN_DIM, bd=1, relief="solid")
+            frm.pack(fill="x", pady=4)
+
+            top_row = tk.Frame(frm, bg=BTN_DIM)
+            top_row.pack(fill="x", padx=8, pady=(6, 0))
+
+            rb_eng = tk.Radiobutton(
+                top_row, text=eng_val, variable=self.engine_mode_var, value=eng_val,
+                font=("Segoe UI", 9, "bold"), fg=eng_color, bg=BTN_DIM,
+                selectcolor=BG, activebackground=BTN_DIM, cursor="hand2"
+            )
+            rb_eng.pack(side="left")
+
+            tk.Label(frm, text=eng_desc,
+                     font=("Segoe UI", 8), fg=SUB, bg=BTN_DIM,
+                     justify="left").pack(anchor="w", padx=26, pady=(2, 6))
+
+        lbl(tab_eng, "\n🛡️ Rollback: Si el motor dinamico no te convence, cambia de vuelta al Clasico.", fg="#10B981").pack(anchor="w")
 
     # ── Actions ───────────────────────────────────────────────────────────────
     def browse_audio(self):
@@ -336,7 +417,8 @@ class FreeFireEditorApp(tk.Tk):
 
     def browse_output_dir(self):
         d = filedialog.askdirectory(title="Carpeta de Destino", initialdir=self.out_dir_var.get())
-        if d: self.out_dir_var.set(d)
+        if d:
+            self.out_dir_var.set(d)
 
     def open_final_video(self):
         target = (self.last_rendered_file
@@ -353,18 +435,18 @@ class FreeFireEditorApp(tk.Tk):
         audio_file    = self.audio_path_var.get().strip()
 
         if gameplay_file and not os.path.exists(gameplay_file):
-            messagebox.showwarning("Atención", f"El archivo de video seleccionado no existe:\n{gameplay_file}")
+            messagebox.showwarning("Atencion", f"El archivo de video seleccionado no existe:\n{gameplay_file}")
             return
 
         if resources_dir and not os.path.exists(resources_dir):
-            messagebox.showwarning("Atención", f"La carpeta de recursos seleccionada no existe:\n{resources_dir}")
+            messagebox.showwarning("Atencion", f"La carpeta de recursos seleccionada no existe:\n{resources_dir}")
             return
 
         if audio_file and not os.path.exists(audio_file):
-            messagebox.showwarning("Atención", f"El archivo de audio seleccionado no existe:\n{audio_file}")
+            messagebox.showwarning("Atencion", f"El archivo de audio seleccionado no existe:\n{audio_file}")
             return
 
-        # Si el usuario seleccionó un video pero no subió un audio separado, extraer el audio del video automáticamente
+        # Si el usuario selecciono un video pero no subio audio separado, extraer audio del video
         if gameplay_file and not audio_file:
             try:
                 import tempfile
@@ -410,7 +492,8 @@ class FreeFireEditorApp(tk.Tk):
 
     def _run(self, audio_file, gameplay_file, resources_dir, hook_flag, out_dir, out_name, speed_val, music_choice, aspect_flag):
         try:
-            if "Síntesis" in self.engine_mode_var.get():
+            eng = self.engine_mode_var.get()
+            if "Sintesis" in eng or "Dinámica" in eng or "Dinamica" in eng:
                 cmd = [
                     sys.executable,
                     str(PROJECT_ROOT / "generate_video.py"),
@@ -454,11 +537,19 @@ class FreeFireEditorApp(tk.Tk):
                 if resources_dir and os.path.exists(resources_dir):
                     cmd.extend(["--resdir", resources_dir])
 
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace"
+            )
             if res.returncode == 0 and self.last_rendered_file.exists():
                 self.after(0, self._on_success)
             else:
-                self.after(0, lambda: self._on_error(res.stderr or res.stdout))
+                err_msg = (res.stderr or "") + (res.stdout or "")
+                err_msg = err_msg.strip() or "El proceso termino sin mensaje de error."
+                self.after(0, lambda m=err_msg: self._on_error(m))
         except Exception as e:
             self.after(0, lambda: self._on_error(str(e)))
 
@@ -474,7 +565,9 @@ class FreeFireEditorApp(tk.Tk):
     def _on_error(self, err):
         self.btn_generate.config(state="normal", bg=RED, text="REINTENTAR  >>>")
         self.lbl_status.config(text="Error durante el renderizado.", fg="#EF4444")
-        messagebox.showerror("Error", f"No se pudo generar el video:\n\n{err[:500]}")
+        # Safely convert to string and truncate for display
+        err_str = str(err) if err is not None else "Error desconocido (sin mensaje)."
+        messagebox.showerror("Error de Render", f"No se pudo generar el video:\n\n{err_str[:600]}")
 
 
 if __name__ == "__main__":
