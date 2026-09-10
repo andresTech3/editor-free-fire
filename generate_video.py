@@ -42,7 +42,8 @@ from core.dynamic_synthesis.scene_state_machine import (
 )
 from core.orientation_helper import (
     get_video_orientation_filter,
-    get_media_orientation_filter
+    get_media_orientation_filter,
+    get_green_screen_crop_filter
 )
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
@@ -193,19 +194,55 @@ def main():
             state3_clips.append(sub)
         curr_t += dur
 
-    # State 2 Memes (snapped to nearest beat)
+    # State 2 & 3 Memes (snapped to nearest beat, guaranteed at least 2-3 memes)
     meme_events = []
     for trig in triggers.get("meme", []):
         t_trig = trig["time"]
-        if t_hook <= t_trig <= t_proof - 1.5:
+        if t_hook <= t_trig <= total_dur - 4.0:
             m_path = sampler.sample_asset("memes")
             if m_path:
                 t_snap = snap_to_nearest_beat(t_trig, beat_times)
                 meme_events.append({
                     "path": m_path,
                     "start": t_snap,
-                    "dur": 1.8
+                    "dur": 2.0
                 })
+
+    # Guarantee at least 2 to 3 memes distributed evenly across the short
+    target_meme_count = 3 if total_dur >= 24.0 else 2
+    if len(meme_events) < target_meme_count and total_dur >= 8.0:
+        if target_meme_count == 3:
+            fallback_anchors = [
+                t_hook + (t_proof - t_hook) * 0.45,
+                t_proof + (t_state4 - t_proof) * 0.35,
+                t_proof + (t_state4 - t_proof) * 0.75
+            ]
+        else:
+            fallback_anchors = [
+                t_hook + (t_proof - t_hook) * 0.5,
+                t_proof + (t_state4 - t_proof) * 0.5
+            ]
+
+        for fa in fallback_anchors:
+            if len(meme_events) >= target_meme_count:
+                break
+            if fa >= total_dur - 3.0:
+                continue
+            if any(abs(m["start"] - fa) < 4.0 for m in meme_events):
+                continue
+            m_path = sampler.sample_asset("memes")
+            if m_path:
+                t_snap = snap_to_nearest_beat(fa, beat_times)
+                meme_events.append({
+                    "path": m_path,
+                    "start": t_snap,
+                    "dur": 2.0
+                })
+
+    meme_events.sort(key=lambda x: x["start"])
+    print(f"🤡 Scheduled {len(meme_events)} Green-Screen Meme Reactions in Timeline:")
+    for me in meme_events:
+        print(f"   • [{me['start']:.2f}s - {me['start']+me['dur']:.2f}s] {Path(me['path']).name}")
 
     # State 4 Spec Card
     spec_card_img = render_dynamic_spec_card_hud(out_w, out_h, duration=total_dur - t_state4)
@@ -339,12 +376,15 @@ def main():
         next_v = f"v_meme_{m_i}"
         m_t = me["start"]
         m_dur = me["dur"]
+        m_path = me["path"]
+        crop_filt = get_green_screen_crop_filter(m_path)
+        m_orient = get_video_orientation_filter(m_path)
         filter_parts.append(
-            f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,"
-            f"scale=750:1300:force_original_aspect_ratio=decrease,colorkey=0x07F814:0.45:0.15,setsar=1,fps=60[m_proc_{m_i}];"
+            f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,{m_orient}{crop_filt}"
+            f"scale=800:1400:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[m_proc_{m_i}];"
         )
         filter_parts.append(
-            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=(W-w)/2:y=280:eof_action=pass[{next_v}];"
+            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=(W-w)/2:y=240:eof_action=pass[{next_v}];"
         )
         curr_v = next_v
 

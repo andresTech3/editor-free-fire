@@ -388,6 +388,45 @@ class SemanticDirector:
 
         total_audio_dur = segments[-1]["end"] if segments else total_duration_fallback
 
+        # ── GUARANTEED GREEN-SCREEN MEMES IN SHORTS ───────────────────────────
+        # Ensure that every Short ALWAYS has at least 2 to 3 green-screen reactions,
+        # even if the speaker didn't say specific trigger words.
+        if is_short and len(meme_events) < max_memes and total_audio_dur >= 8.0:
+            target_count = 3 if total_audio_dur >= 22.0 else 2
+            if target_count == 3:
+                candidate_times = [total_audio_dur * 0.28, total_audio_dur * 0.58, total_audio_dur * 0.82]
+            else:
+                candidate_times = [total_audio_dur * 0.38, total_audio_dur * 0.75]
+
+            fallback_cats = ["god_mode", "shock", "thinking", "laugh", "subscribe"]
+            cat_idx = 0
+            for ct in candidate_times:
+                if len(meme_events) >= target_count:
+                    break
+                # Ensure spacing from existing memes
+                if any(abs(m["time"] - ct) < 4.5 for m in meme_events):
+                    continue
+                # Ensure no severe collision with visuals
+                if any(v["time"] - 1.0 <= ct <= (v["time"] + v["duration"] + 1.0) for v in visual_events):
+                    continue
+
+                f_cat = fallback_cats[cat_idx % len(fallback_cats)]
+                cat_idx += 1
+                f_path = self._find_green_meme_for_context(f_cat, used_memes)
+                if f_path:
+                    used_memes.add(f_path)
+                    meme_events.append({
+                        "time": round(ct, 2),
+                        "duration": 2.0,
+                        "category": f_cat,
+                        "matched_phrase": "[Guaranteed Viral Short Reaction]",
+                        "meme_path": f_path,
+                        "is_green_screen": True
+                    })
+
+            # Re-sort memes chronologically
+            meme_events.sort(key=lambda x: x["time"])
+
         return {
             "total_duration": total_audio_dur,
             "segments": segments,

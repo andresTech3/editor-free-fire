@@ -843,13 +843,12 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
 
         # Detect actual green color in this specific meme for accurate chromakey
         crop_filt = get_green_screen_crop_filter(m_path)
-        # Use broader colorkey similarity (0.45) + low blend (0.15) to handle
-        # the actual green (#07F814) used across the PACK MEMES PANTALLA VERDE pack.
-        # setpts=PTS-STARTPTS+out_t/TB makes the meme stream start at the right output frame.
+        # Use chromakey (YUV space) with 0.28 tolerance + 0.08 blend for clean transparent keying
+        # across all shades of green in PACK MEMES PANTALLA VERDE without clipping skin tones.
         filter_parts.append(
             f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.3f}/TB,{m_orient}{crop_filt}"
             f"scale=800:1400:force_original_aspect_ratio=decrease,"
-            f"colorkey=0x07F814:0.45:0.15,setsar=1,fps=60[m_proc_{m_i}];"
+            f"chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[m_proc_{m_i}];"
         )
         filter_parts.append(
             f"[{curr_v}][m_proc_{m_i}]overlay="
@@ -864,7 +863,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
 
     filter_parts.append(
         f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.3f}/TB,"
-        f"scale=420:240:force_original_aspect_ratio=decrease,colorkey=0x07F814:0.45:0.15,setsar=1,fps=60[cta_proc];"
+        f"scale=420:240:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_proc];"
     )
     filter_parts.append(
         f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.3f},{cta_out_start+3.5:.3f})':x=(W-w)/2:y=1600:eof_action=pass[v_with_cta];"

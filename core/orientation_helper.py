@@ -163,4 +163,28 @@ def file_has_audio(file_path: str) -> bool:
     except Exception:
         return False
 
-print("Orientation helper and file_has_audio defined.")
+
+def get_green_screen_crop_filter(video_path: str) -> str:
+    """Detects if a green screen video has black pillarboxes/letterboxes and returns an FFmpeg crop filter."""
+    try:
+        import cv2
+        import numpy as np
+        cap = cv2.VideoCapture(str(video_path))
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            return ""
+        h, w, _ = frame.shape
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        non_black = np.where(gray > 20)
+        if len(non_black[0]) > 0:
+            min_y, max_y = int(np.min(non_black[0])), int(np.max(non_black[0]))
+            min_x, max_x = int(np.min(non_black[1])), int(np.max(non_black[1]))
+            if min_x > int(w * 0.03) or (w - 1 - max_x) > int(w * 0.03) or min_y > int(h * 0.03) or (h - 1 - max_y) > int(h * 0.03):
+                crop_w = max_x - min_x + 1
+                crop_h = max_y - min_y + 1
+                return f"crop={crop_w}:{crop_h}:{min_x}:{min_y},"
+    except Exception:
+        pass
+    return ""
+

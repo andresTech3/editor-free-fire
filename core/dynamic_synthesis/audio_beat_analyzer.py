@@ -45,7 +45,10 @@ SEMANTIC_TRIGGERS = {
     ],
     "meme": [
         "amigo", "problema", "youtuber", "mentira", "falla", "manco", "manquito",
-        "no pega", "humillado", "locura", "mentiroso"
+        "no pega", "humillado", "locura", "mentiroso", "truco", "secreto", "formula",
+        "fórmula", "proceso", "cabeza", "pegar", "rojo", "subir", "afinar", "mira",
+        "increible", "increíble", "impresionante", "dios", "insano", "diablo", "modo",
+        "crack", "letal", "responde", "pantalla", "control", "estrategia", "valor"
     ],
     "stats": [
         "dispositivo", "itel", "dpi", "configuración", "configuracion", "celular",
