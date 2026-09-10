@@ -53,8 +53,9 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 def main():
     parser = argparse.ArgumentParser(description="Automated Dynamic Video Synthesis Engine")
     parser.add_argument("--audio", type=str, default=None, help="Path to input voiceover audio")
-    parser.add_argument("--bgm", type=str, default=None, help="Path to background music audio")
+    parser.add_argument("--bgm", type=str, default=None, help="Path to background music audio (optional)")
     parser.add_argument("--assets_dir", type=str, default=str(DEFAULT_ASSETS_DIR), help="Root directory for media assets")
+    parser.add_argument("--gamedir", type=str, default=None, help="Optional custom gameplay clips folder")
     parser.add_argument("--aspect", type=str, default="9:16", choices=["9:16", "16:9"], help="Output aspect ratio")
     parser.add_argument("--outdir", type=str, default=str(DEFAULT_OUTPUT_DIR), help="Directory to save final video")
     parser.add_argument("--outname", type=str, default="dynamic_synthesis_video.mp4", help="Name of output video file")
@@ -75,17 +76,27 @@ def main():
         print("❌ Error: No voiceover audio file provided or found.")
         sys.exit(1)
 
-    # 2. Locate BGM Audio
+    # 2. Locate BGM Audio (optional — uses silence if not found)
     bgm_path = args.bgm
     if not bgm_path or not os.path.exists(bgm_path):
-        mus_dir = recurso_dir / "musica"
-        if mus_dir.exists():
-            bgms = list(mus_dir.glob("*.mp3")) + list(mus_dir.glob("*.wav"))
-            if bgms:
-                bgm_path = str(bgms[0])
-    if not bgm_path or not os.path.exists(bgm_path):
-        print("❌ Error: No background music file provided or found.")
-        sys.exit(1)
+        # Search in musica/ under recurso_dir and its parents
+        search_dirs = [
+            recurso_dir / "musica",
+            assets_path / "musica",
+            assets_path / "Recurso video Freefire" / "musica",
+            PROJECT_ROOT / "assets" / "Recurso video Freefire" / "musica",
+        ]
+        for mus_dir in search_dirs:
+            if mus_dir.exists():
+                bgms = (list(mus_dir.glob("*.mp3")) + list(mus_dir.glob("*.wav"))
+                        + list(mus_dir.glob("*.MP3")) + list(mus_dir.glob("*.WAV")))
+                if bgms:
+                    bgm_path = str(bgms[0])
+                    break
+
+    has_bgm = bool(bgm_path and os.path.exists(bgm_path))
+    if not has_bgm:
+        print("⚠️  Warning: No BGM file found. Video will use silence for background music.")
 
     print("\n" + "═"*75)
     print("🚀 AUTOMATED DYNAMIC VIDEO SYNTHESIS ENGINE (WHISPER + LIBROSA + 3D)")
@@ -108,13 +119,24 @@ def main():
     triggers = vo_data["triggers"]
 
     # ── STEP 2: LIBROSA BEAT & ONSET EXTRACTION ───────────────────────────────
-    bgm_data = analyze_bgm_beats(bgm_path, target_duration=total_dur)
-    beat_times = bgm_data["beat_times"]
-    t_hook = snap_to_nearest_beat(t_hook, beat_times, max_distance=0.7)
+    if has_bgm:
+        bgm_data = analyze_bgm_beats(bgm_path, target_duration=total_dur)
+        beat_times = bgm_data["beat_times"]
+        t_hook = snap_to_nearest_beat(t_hook, beat_times, max_distance=0.7)
+    else:
+        # No BGM: generate evenly spaced beat grid (0.5s grid = 120 BPM equiv.)
+        beat_times = [round(i * 0.5, 2) for i in range(int(total_dur / 0.5) + 1)]
+        print("  (Using 120 BPM placeholder beat grid — no BGM)")
 
     # ── STEP 3: MATHEMATICAL AUDIO DUCKING (ONE-POLE IIR SIDECHAIN) ───────────
     tmp_audio_out = str(Path(tempfile.gettempdir()) / "sidechained_master_audio.wav")
-    apply_mathematical_sidechain_ducking(audio_path, bgm_path, tmp_audio_out, target_duration=total_dur)
+    if has_bgm:
+        apply_mathematical_sidechain_ducking(audio_path, bgm_path, tmp_audio_out, target_duration=total_dur)
+    else:
+        # No BGM: copy voiceover directly (no sidechain needed)
+        import shutil
+        shutil.copy2(audio_path, tmp_audio_out)
+        print("  (No BGM — voiceover copied directly as master audio)")
 
     # ── STEP 4: STOCHASTIC ASSET SAMPLING (WITHOUT REPETITION) ────────────────
     sampler = StochasticAssetSampler(assets_root=str(assets_path))

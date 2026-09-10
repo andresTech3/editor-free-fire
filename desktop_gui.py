@@ -494,17 +494,22 @@ class FreeFireEditorApp(tk.Tk):
         try:
             eng = self.engine_mode_var.get()
             if "Sintesis" in eng or "Dinámica" in eng or "Dinamica" in eng:
+                # Always pass the PROJECT assets root so generate_video.py
+                # can locate musica/, PACK MEMES, etc. regardless of what
+                # the user selected as gameplay folder.
                 cmd = [
                     sys.executable,
                     str(PROJECT_ROOT / "generate_video.py"),
-                    "--aspect",  aspect_flag,
-                    "--outdir",  out_dir,
-                    "--outname", out_name,
+                    "--aspect",    aspect_flag,
+                    "--outdir",    out_dir,
+                    "--outname",   out_name,
+                    "--assets_dir", str(PROJECT_ROOT / "assets"),
                 ]
                 if audio_file and os.path.exists(audio_file):
                     cmd.extend(["--audio", audio_file])
+                # Optional: specific gameplay subfolder
                 if resources_dir and os.path.exists(resources_dir):
-                    cmd.extend(["--assets_dir", resources_dir])
+                    cmd.extend(["--gamedir", resources_dir])
             elif aspect_flag == "16:9":
                 cmd = [
                     sys.executable,
