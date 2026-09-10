@@ -17,11 +17,24 @@ Implements:
      alpha_release = exp(-1 / (0.250 * fs))
 """
 
+import os
+import sys
 import math
+
+# UTF-8 Encoding on Windows
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import numpy as np
 import librosa
 import soundfile as sf
 import whisper
+
 
 
 # ── 1. SEMANTIC TRIGGER DEFINITIONS ──────────────────────────────────────────

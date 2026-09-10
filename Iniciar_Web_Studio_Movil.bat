@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 cls
 title CÓDIGO HEADSHOT — Mobile & Web Video Studio
 

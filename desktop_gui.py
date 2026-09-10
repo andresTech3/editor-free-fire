@@ -8,6 +8,16 @@ Layout v24.1: 2-COLUMN WIDE layout (1180x580) to avoid vertical overflow on scre
 
 import os
 import sys
+
+# Set UTF-8 encoding on Windows
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import subprocess
 import threading
 from pathlib import Path
