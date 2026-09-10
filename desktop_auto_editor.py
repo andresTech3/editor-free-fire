@@ -529,16 +529,24 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             pass
 
     # 4. Build Dynamic Rhythmic B-Roll Timeline (Fast, frenetic 1.3s - 1.8s cuts for Shorts)
+    # ── ENTROPY SEED: changes on every execution for maximum clip variety ──
+    import time as _time
+    _entropy_seed = int(_time.time() * 1000) % (2**31)
+    random.seed(_entropy_seed)
     shuffled_gameplays = gameplay_files.copy()
     random.shuffle(shuffled_gameplays)
+    # After shuffle, re-seed with a different offset so all random calls below are also unique
+    random.seed(_entropy_seed + 7919)
 
     broll_segments = []
     used_ranges = {str(g): [] for g in gameplay_files}
     current_broll_total = 0.0
     idx = 0
+    # Rotate starting position so first clip differs each run
+    _start_offset = _entropy_seed % len(shuffled_gameplays)
 
     while current_broll_total < total_output_dur + 4.0:
-        gfile = shuffled_gameplays[idx % len(shuffled_gameplays)]
+        gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
         gpath = str(gfile)
         idx += 1
 
@@ -819,7 +827,11 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         )
         curr_v = next_v
 
-    # 3. Overlay Green-Screen Memes ("un poco más arriba", above the center crosshairs)
+    # 3. Overlay Green-Screen Memes (upper third, continuous gameplay underneath)
+    # NOTE: The meme input is already trimmed to m_dur seconds from -ss 0 -t m_dur.
+    #       We use setpts=PTS-STARTPTS so it starts at t=0 in its own stream.
+    #       The overlay filter uses enable='between(t, out_t, out_t+dur)' to place it
+    #       at the correct timeline position — no TB offset needed.
     for m_i, m_item in enumerate(meme_input_info):
         m_ev = m_item["event"]
         m_out_t = m_ev["out_time"]
@@ -829,14 +841,20 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         m_orient = get_video_orientation_filter(m_path)
         next_v = f"v_meme_{m_i}"
 
-        # Positioned in upper third so center headshot action is not covered
+        # Detect actual green color in this specific meme for accurate chromakey
         crop_filt = get_green_screen_crop_filter(m_path)
+        # Use broader colorkey similarity (0.45) + low blend (0.15) to handle
+        # the actual green (#07F814) used across the PACK MEMES PANTALLA VERDE pack.
+        # setpts=PTS-STARTPTS+out_t/TB makes the meme stream start at the right output frame.
         filter_parts.append(
-            f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.2f}/TB,{m_orient}{crop_filt}"
-            f"scale=750:1300:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[m_proc_{m_i}];"
+            f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.3f}/TB,{m_orient}{crop_filt}"
+            f"scale=800:1400:force_original_aspect_ratio=decrease,"
+            f"colorkey=0x07F814:0.45:0.15,setsar=1,fps=60[m_proc_{m_i}];"
         )
         filter_parts.append(
-            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+m_dur:.2f})':x=(W-w)/2:y=280:eof_action=pass[{next_v}];"
+            f"[{curr_v}][m_proc_{m_i}]overlay="
+            f"enable='between(t,{m_out_t:.3f},{m_out_t+m_dur:.3f})':"
+            f"x=(W-w)/2:y=240:eof_action=pass[{next_v}];"
         )
         curr_v = next_v
 
@@ -845,11 +863,11 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     cta_out_start = map_vo_time_to_output(cta_start)
 
     filter_parts.append(
-        f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.2f}/TB,"
-        f"scale=420:240:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[cta_proc];"
+        f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.3f}/TB,"
+        f"scale=420:240:force_original_aspect_ratio=decrease,colorkey=0x07F814:0.45:0.15,setsar=1,fps=60[cta_proc];"
     )
     filter_parts.append(
-        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=(W-w)/2:y=1600:eof_action=pass[v_with_cta];"
+        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.3f},{cta_out_start+3.5:.3f})':x=(W-w)/2:y=1600:eof_action=pass[v_with_cta];"
     )
     curr_v = "v_with_cta"
 

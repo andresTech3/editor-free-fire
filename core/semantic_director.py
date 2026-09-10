@@ -221,8 +221,9 @@ class SemanticDirector:
         last_visual_end = -10.0
         last_meme_end = -10.0
         min_visual_gap = 7.0 if is_short else 6.0
-        min_meme_gap = 8.0
+        min_meme_gap = 6.5  # Reduced gap so more memes fit in short videos
         max_visuals = 3 if is_short else 5
+        max_memes = 3 if is_short else 5  # Up to 3 meme reactions per short
 
         # Scan each speech segment and words
         for seg in segments:
@@ -354,7 +355,7 @@ class SemanticDirector:
                 for v in visual_events
             )
 
-            if meme_cat and (meme_time >= last_meme_end + min_meme_gap) and not overlaps_with_visual:
+            if meme_cat and (meme_time >= last_meme_end + min_meme_gap) and not overlaps_with_visual and (len(meme_events) < max_memes):
                 meme_path = None
                 is_green = False
 

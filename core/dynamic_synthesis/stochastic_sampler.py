@@ -29,6 +29,7 @@ if sys.platform == "win32":
         pass
 
 import random
+import time as _time
 from pathlib import Path
 import cv2
 
@@ -49,6 +50,10 @@ class StochasticAssetSampler:
             "overlays": set()
         }
         self.clip_durations = {}
+        # Entropy seed: each instantiation yields a unique shuffle order
+        _seed = int(_time.time() * 1e6) % (2**31)
+        random.seed(_seed)
+        self._session_seed = _seed
         self._discover_pools()
 
     def _discover_pools(self):
