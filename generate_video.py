@@ -213,7 +213,10 @@ def main():
     # ── STEP 6: COMPILE FFMPEG COMMAND ────────────────────────────────────────
     out_dir_path = Path(args.outdir).resolve()
     out_dir_path.mkdir(parents=True, exist_ok=True)
-    out_file_path = out_dir_path / args.outname
+    out_name = args.outname
+    if not out_name.lower().endswith(".mp4"):
+        out_name += ".mp4"
+    out_file_path = out_dir_path / out_name
 
     cmd = ["ffmpeg", "-y"]
 
@@ -338,7 +341,7 @@ def main():
         m_dur = me["dur"]
         filter_parts.append(
             f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,"
-            f"scale=750:1300:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[m_proc_{m_i}];"
+            f"scale=750:1300:force_original_aspect_ratio=decrease,colorkey=0x07F814:0.45:0.15,setsar=1,fps=60[m_proc_{m_i}];"
         )
         filter_parts.append(
             f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=(W-w)/2:y=280:eof_action=pass[{next_v}];"

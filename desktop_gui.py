@@ -177,9 +177,31 @@ class FreeFireEditorApp(tk.Tk):
             command=open_web_studio
         ).pack(side="right", padx=16, pady=8)
 
-        # ── BOTTOM: GENERATE BUTTON + STATUS ──────────────────────────────────
+        # ── BOTTOM: NOMBRE DE ARCHIVO + GENERATE BUTTON + STATUS ───────────────────────
         bottom = tk.Frame(self, bg=BG)
         bottom.pack(side="bottom", fill="x", padx=16, pady=8)
+
+        # Filename row — always visible above the generate button
+        row_name = tk.Frame(bottom, bg=BG)
+        row_name.pack(fill="x", pady=(0, 6))
+
+        tk.Label(
+            row_name,
+            text="💾  Nombre del archivo de salida (.mp4):",
+            font=("Segoe UI", 9, "bold"), fg=GOLD, bg=BG
+        ).pack(side="left", padx=(0, 8))
+        tk.Entry(
+            row_name,
+            textvariable=self.out_name_var,
+            font=("Consolas", 10, "bold"),
+            bg="#1A1D27", fg=GOLD, insertbackground=GOLD,
+            bd=1, relief="solid", width=36
+        ).pack(side="left", ipady=4)
+        tk.Label(
+            row_name,
+            text="(sin extensión, se agrega .mp4 solo)",
+            font=("Segoe UI", 8), fg=SUB, bg=BG
+        ).pack(side="left", padx=(8, 0))
 
         self.btn_generate = tk.Button(
             bottom, text="🔥 EDITAR VIDEO EN HEADSHOT STUDIO  >>>",
