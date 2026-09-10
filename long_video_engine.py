@@ -163,7 +163,13 @@ def collect_169_gameplay_videos(custom_dir=None):
         if gameplay_files:
             print(f"📦 [Recursos Personalizados 16:9] Encontrados {len(gameplay_files)} videos subidos por el usuario.")
     else:
-        exclude_kw = ["pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro"]
+        exclude_kw = [
+            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro",
+            "img_1355", "img_1372", "img_1356", "img_1366"
+        ]
+        for i in range(1326, 1336):
+            exclude_kw.append(f"img_{i}")
+
         for ext in video_exts:
             for f in target_dir.rglob(ext):
                 p_str = str(f).lower()
@@ -172,9 +178,17 @@ def collect_169_gameplay_videos(custom_dir=None):
                 gameplay_files.append(f)
 
     if not gameplay_files:
+        exclude_kw = [
+            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro",
+            "img_1355", "img_1372", "img_1356", "img_1366"
+        ]
+        for i in range(1326, 1336):
+            exclude_kw.append(f"img_{i}")
+
         for ext in video_exts:
             for f in JUGADAS_DIR.rglob(ext):
-                if "intro" in f.name.lower():
+                p_str = str(f).lower()
+                if any(ex in p_str for ex in exclude_kw):
                     continue
                 gameplay_files.append(f)
 
@@ -798,7 +812,15 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
                 pass
 
         # Professional Layout & Filter Formulation
-        if is_green:
+        if v_ev.get("type") == "avatar_fullscreen":
+            scale_filter = "scale=1920:1080:force_original_aspect_ratio=decrease"
+            pos_expr = "x=(W-w)/2:y=(H-h)/2"
+            pad_filter = ""
+        elif v_ev.get("type") == "asesoria":
+            scale_filter = "scale=600:900:force_original_aspect_ratio=decrease"
+            pos_expr = "x=140:y=90"
+            pad_filter = ",pad=iw+6:ih+6:3:3:color=white@0.35"
+        elif is_green:
             # Full-screen or centered green-screen overlay (e.g. LLUVIA DE DINERO)
             scale_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2"
             pos_expr = "x=(W-w)/2:y=(H-h)/2"
@@ -876,12 +898,8 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=W-w-80:y=H-h-80:eof_action=pass[v_overlays];"
     )
 
-    # 5. Burn-in Subtitles (.ass)
-    rel_sub = "subtitles_temp.ass"
-    if os.path.exists(rel_sub):
-        filter_parts.append(f"[v_overlays]subtitles='{rel_sub}'[v_final];")
-    else:
-        filter_parts.append(f"[v_overlays]null[v_final];")
+    # 5. Output Video Stream (Subtitles completely removed per user instruction)
+    filter_parts.append(f"[v_overlays]null[v_final];")
 
     # 6. AUDIO SPLICING & MIXING: HARD CUT VOICEOVER DURING MEMES AND INTRO
     vo_chunks = []

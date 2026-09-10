@@ -36,6 +36,7 @@ from core.asset_catalog import (
     PASS_AND_TOURNAMENT_CATALOG,
     TOP_GLOBAL_CATALOG,
     SENSITIVITY_CATALOG,
+    ASESORIA_CATALOG,
     DPI_AND_DEVICE_CATALOG,
     BOOK_AND_WEB_CATALOG,
     EMOTES_CATALOG,
@@ -215,13 +216,13 @@ class SemanticDirector:
         visual_events: List[Dict[str, Any]] = []
         meme_events: List[Dict[str, Any]] = []
         used_memes: set = set()
+        used_visual_types: set = set()
 
-        # Keep track of usage to alternate assets dynamically
-        sensitivity_count = 0
         last_visual_end = -10.0
         last_meme_end = -10.0
-        min_visual_gap = 2.5
-        min_meme_gap = 5.0
+        min_visual_gap = 7.0 if is_short else 6.0
+        min_meme_gap = 8.0
+        max_visuals = 3 if is_short else 5
 
         # Scan each speech segment and words
         for seg in segments:
@@ -230,210 +231,94 @@ class SemanticDirector:
             seg_text = seg["text"]
             seg_norm = normalize_text(seg_text)
 
-            visual_added_at_seg = False
+            # Strict Hook Protection & Spacing Rules:
+            # 1. First 3.5s is strictly pure Free Fire gameplay (no images allowed).
+            # 2. Max 3 visual overlays per video so 85%+ is pure gameplay action.
+            # 3. Minimum 7.0s gap between images.
+            can_add_visual = (seg_start >= 3.5 if is_short else True) and \
+                             (len(visual_events) < max_visuals) and \
+                             (seg_start >= last_visual_end + min_visual_gap)
 
             # ── 1. CHECK VISUAL ASSETS (Strict Contextual Match, Never Random) ──
 
-            # A. DIAMONDS / DINERO / RECARGAS / MONEDAS
-            if self._match_keyword(seg_norm, DIAMONDS_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    # User request: "cuando se hablen de diamantes muestre la imagenes donde esta diamantes o emotes donde hay dinero"
-                    if any(k in seg_norm for k in ["emote", "baile", "presumir"]):
-                        v_asset = DIAMONDS_CATALOG["emotes_video"]
-                        is_gs = False
-                        v_label = "Emote Presumiendo Dinero Free Fire"
-                    elif any(k in seg_norm for k in ["dinero", "plata", "lluvia", "oro", "millonario", "gastar", "comprar"]):
-                        v_asset = DIAMONDS_CATALOG["green_screen_money"]
-                        is_gs = True
-                        v_label = "Lluvia de Dinero (Memes Pantalla Verde)"
-                    else:
-                        v_asset = DIAMONDS_CATALOG["chest_image"]
-                        is_gs = False
-                        v_label = "Cofre de Diamantes Free Fire"
+            # A. DIAMONDS / RECARGAS (Solo venta o conseguir diamantes más baratos)
+            if can_add_visual and "diamond" not in used_visual_types and self._match_keyword(seg_norm, DIAMONDS_CATALOG["keywords"]):
+                visual_events.append({
+                    "time": seg_start,
+                    "duration": 2.3,
+                    "type": "diamond",
+                    "label": "Venta de Diamantes Baratos Free Fire",
+                    "asset_path": DIAMONDS_CATALOG["chest_image"],
+                    "is_green_screen": False,
+                    "sfx_path": DIAMONDS_CATALOG["sfx"]
+                })
+                used_visual_types.add("diamond")
+                last_visual_end = seg_start + 2.3
 
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.0,
-                        "type": "diamond",
-                        "label": v_label,
-                        "asset_path": v_asset,
-                        "is_green_screen": is_gs,
-                        "sfx_path": DIAMONDS_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.0
-                    visual_added_at_seg = True
+            # B. CÓDIGO HEADSHOT WEB (Solo cuando dice que vayan a codigoheadshot)
+            elif can_add_visual and "book_and_web" not in used_visual_types and self._match_keyword(seg_norm, BOOK_AND_WEB_CATALOG["keywords"]):
+                visual_events.append({
+                    "time": seg_start,
+                    "duration": 2.5,
+                    "type": "book_and_web",
+                    "label": "Web Oficial Código Headshot (codigoheadshot.online)",
+                    "asset_path": BOOK_AND_WEB_CATALOG["web_banner"],
+                    "sfx_path": BOOK_AND_WEB_CATALOG["sfx"]
+                })
+                used_visual_types.add("book_and_web")
+                last_visual_end = seg_start + 2.5
 
-            # B. PASE ÉLITE / TORNEOS / SALAS COMPETITIVAS
-            elif self._match_keyword(seg_norm, PASS_AND_TOURNAMENT_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    # User request: "cuando digan pase elite lo mismo"
-                    if any(k in seg_norm for k in ["torneo", "sala", "salas", "campeonato", "copa"]):
-                        v_asset = PASS_AND_TOURNAMENT_CATALOG["tournament_poster"]
-                        v_label = "Torneo Oficial Booyah"
-                    elif any(k in seg_norm for k in ["gran maestro", "rango"]):
-                        v_asset = PASS_AND_TOURNAMENT_CATALOG["elite_badge"]
-                        v_label = "Insignia Gran Maestro"
-                    else:
-                        v_asset = PASS_AND_TOURNAMENT_CATALOG["tournament_poster"]
-                        v_label = "Pase Élite Free Fire"
+            # C. ASESORÍA / ENTREVISTA (Solo cuando habla de asesoría o entrevista con un usuario)
+            elif can_add_visual and "asesoria" not in used_visual_types and self._match_keyword(seg_norm, ASESORIA_CATALOG["keywords"]):
+                visual_events.append({
+                    "time": seg_start,
+                    "duration": 2.6,
+                    "type": "asesoria",
+                    "label": "Asesoría / Entrevista Personalizada",
+                    "asset_path": ASESORIA_CATALOG["device_advice"],
+                    "sfx_path": ASESORIA_CATALOG["sfx"]
+                })
+                used_visual_types.add("asesoria")
+                last_visual_end = seg_start + 2.6
 
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.2,
-                        "type": "pass_and_tournament",
-                        "label": v_label,
-                        "asset_path": v_asset,
-                        "sfx_path": PASS_AND_TOURNAMENT_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.2
-                    visual_added_at_seg = True
+            # D. AVATAR EN PANTALLA COMPLETA (Solo cuando habla de mi cuenta, mi avatar, el creador)
+            elif can_add_visual and "avatar" not in used_visual_types and self._match_keyword(seg_norm, CHARACTERS_AND_PROFILE_CATALOG["keywords"]):
+                visual_events.append({
+                    "time": seg_start,
+                    "duration": 2.5,
+                    "type": "avatar_fullscreen",
+                    "label": "Avatar Oficial Cris FF",
+                    "asset_path": CHARACTERS_AND_PROFILE_CATALOG["avatar"],
+                    "sfx_path": SFX_CATALOG["ding"]
+                })
+                used_visual_types.add("avatar")
+                last_visual_end = seg_start + 2.5
 
-            # C. TOP GLOBALES / RANKINGS / GRAN MAESTRO
-            elif self._match_keyword(seg_norm, TOP_GLOBAL_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    # User request: "o top globales etc cada imagen tiene su nombre, no especificamente pero puede estar relacionado"
-                    if "gran maestro" in seg_norm:
-                        v_asset = TOP_GLOBAL_CATALOG["gran_maestro_badge"]
-                        v_label = "Insignia Gran Maestro"
-                    elif any(k in seg_norm for k in ["tabla", "puntos", "posicion", "clasificacion"]):
-                        v_asset = TOP_GLOBAL_CATALOG["ranking_board"] if os.path.exists(TOP_GLOBAL_CATALOG["ranking_board"]) else TOP_GLOBAL_CATALOG["leaderboard_image"]
-                        v_label = "Tabla de Posiciones Oficial"
-                    else:
-                        v_asset = TOP_GLOBAL_CATALOG["leaderboard_image"]
-                        v_label = "Top Global Oficial Free Fire"
+            # E. SENSIBILIDAD IN-GAME (Solo cuando habla de calibrar miras o sensibilidad)
+            elif can_add_visual and "sensitivity" not in used_visual_types and self._match_keyword(seg_norm, SENSITIVITY_CATALOG["keywords"]):
+                visual_events.append({
+                    "time": seg_start,
+                    "duration": 2.2,
+                    "type": "sensitivity",
+                    "label": "Sensibilidad In-Game Free Fire",
+                    "asset_path": SENSITIVITY_CATALOG["in_game_menu"],
+                    "sfx_path": SENSITIVITY_CATALOG["sfx"]
+                })
+                used_visual_types.add("sensitivity")
+                last_visual_end = seg_start + 2.2
 
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.5,
-                        "type": "top_global",
-                        "label": v_label,
-                        "asset_path": v_asset,
-                        "sfx_path": TOP_GLOBAL_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.5
-                    visual_added_at_seg = True
-
-            # D. RESULTADOS & ESTADÍSTICAS (Resultados, Daño Efectivo, Kills, Bajas)
-            elif self._match_keyword(seg_norm, RESULTS_AND_STATS_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.0,
-                        "type": "results",
-                        "label": "Resultados Oficiales de Partida",
-                        "asset_path": RESULTS_AND_STATS_CATALOG["results_image"],
-                        "sfx_path": RESULTS_AND_STATS_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.0
-                    visual_added_at_seg = True
-
-            # E. WEAPONS / PVP / BATTLE ROYALE / DISPARO / DAÑO
-            elif self._match_keyword(seg_norm, WEAPONS_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    if "groza" in seg_norm:
-                        w_img = WEAPONS_CATALOG["groza_booyah"]
-                        w_label = "Groza Booyah"
-                    elif "m16" in seg_norm or "rifle" in seg_norm:
-                        w_img = WEAPONS_CATALOG["m16_rifle"]
-                        w_label = "Rifle M16"
-                    else:
-                        w_img = WEAPONS_CATALOG["ak47_dragon"]
-                        w_label = "AK-47 Dragón Flama Azul Evolutiva"
-
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 2.8,
-                        "type": "weapon",
-                        "label": w_label,
-                        "asset_path": w_img,
-                        "sfx_path": WEAPONS_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 2.8
-                    visual_added_at_seg = True
-
-            # F. BOOK / WEB / GUÍA / CÓDIGO HEADSHOT
-            elif self._match_keyword(seg_norm, BOOK_AND_WEB_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.2,
-                        "type": "book_and_web",
-                        "label": "Banner Oficial Código Headshot",
-                        "asset_path": BOOK_AND_WEB_CATALOG["web_banner"],
-                        "sfx_path": BOOK_AND_WEB_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.2
-                    visual_added_at_seg = True
-
-            # G. DPI & DISPOSITIVO MÓVIL (Celular, Pantalla, Gama, Asesoría)
-            elif self._match_keyword(seg_norm, DPI_AND_DEVICE_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.2,
-                        "type": "dpi_device",
-                        "label": "Asesoría de Celular & DPI",
-                        "asset_path": DPI_AND_DEVICE_CATALOG["device_advice"],
-                        "sfx_path": DPI_AND_DEVICE_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.2
-                    visual_added_at_seg = True
-
-            # H. SENSIBILIDAD & MIRAS
-            elif self._match_keyword(seg_norm, SENSITIVITY_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.2,
-                        "type": "sensitivity",
-                        "label": "Sensibilidad In-Game Free Fire",
-                        "asset_path": SENSITIVITY_CATALOG["in_game_menu"],
-                        "sfx_path": SENSITIVITY_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 3.2
-                    visual_added_at_seg = True
-
-            # I. EMOTES & CELEBRACIONES
-            elif self._match_keyword(seg_norm, EMOTES_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 2.8,
-                        "type": "emotes",
-                        "label": "Emote Free Fire",
-                        "asset_path": EMOTES_CATALOG["emotes_video"],
-                        "sfx_path": EMOTES_CATALOG["sfx"]
-                    })
-                    last_visual_end = seg_start + 2.8
-                    visual_added_at_seg = True
-
-            # J. PERSONAJE & PERFIL
-            elif self._match_keyword(seg_norm, CHARACTERS_AND_PROFILE_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 2.8,
-                        "type": "character",
-                        "label": "Personaje Oficial Free Fire",
-                        "asset_path": CHARACTERS_AND_PROFILE_CATALOG["personaje"],
-                        "sfx_path": SFX_CATALOG["ding"]
-                    })
-                    last_visual_end = seg_start + 2.8
-                    visual_added_at_seg = True
-
-            # K. CALL TO ACTION / LIKES / SUSCRÍBETE
-            elif self._match_keyword(seg_norm, CALL_TO_ACTION_CATALOG["keywords"]):
-                if seg_start >= last_visual_end + min_visual_gap:
-                    visual_events.append({
-                        "time": seg_start,
-                        "duration": 3.0,
-                        "type": "cta",
-                        "label": "Insignia de Likes y Suscríbete",
-                        "asset_path": CALL_TO_ACTION_CATALOG["likes_badge"],
-                        "sfx_path": SFX_CATALOG["ding"]
-                    })
-                    last_visual_end = seg_start + 3.0
-                    visual_added_at_seg = True
+            # F. WEAPONS (Solo si mencionan explícitamente el nombre de la arma evolutiva)
+            elif can_add_visual and "weapon" not in used_visual_types and self._match_keyword(seg_norm, WEAPONS_CATALOG["keywords"]):
+                visual_events.append({
+                    "time": seg_start,
+                    "duration": 2.2,
+                    "type": "weapon",
+                    "label": "Arma Evolutiva",
+                    "asset_path": WEAPONS_CATALOG["ak47_dragon"],
+                    "sfx_path": WEAPONS_CATALOG["sfx"]
+                })
+                used_visual_types.add("weapon")
+                last_visual_end = seg_start + 2.2
 
             # ── 2. CHECK CONTEXTUAL MEMES (STRICT CONTEXT MATCHING, NEVER RANDOM) ──
             meme_cat = None
@@ -464,15 +349,19 @@ class SemanticDirector:
 
             # Schedule meme reaction at the end of the spoken phrase so the phrase is completed cleanly
             meme_time = seg_end
+            overlaps_with_visual = any(
+                v["time"] - 1.5 <= meme_time <= (v["time"] + v["duration"] + 1.5)
+                for v in visual_events
+            )
 
-            if meme_cat and (meme_time >= last_meme_end + min_meme_gap):
+            if meme_cat and (meme_time >= last_meme_end + min_meme_gap) and not overlaps_with_visual:
                 meme_path = None
                 is_green = False
 
                 if is_short:
-                    # Shorts: strictly prioritize green-screen memes
+                    # Shorts: ONLY green-screen memes (never 16:9 cutaway memes)
                     meme_path = self._find_green_meme_for_context(meme_cat, used_memes)
-                    is_green = True
+                    is_green = True if meme_path else False
                 else:
                     # Long 16:9 videos: pick from PACK DE MEMES matching context, fallback to green-screen
                     pack_meme = self._find_best_pack_meme_for_context(meme_cat, seg_text, used_memes)

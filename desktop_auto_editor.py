@@ -112,6 +112,29 @@ def file_has_audio(file_path: str) -> bool:
         return False
 
 
+def get_green_screen_crop_filter(video_path: str) -> str:
+    """Detects if a green screen video has black pillarboxes/letterboxes and returns an FFmpeg crop filter."""
+    try:
+        cap = cv2.VideoCapture(str(video_path))
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            return ""
+        h, w, _ = frame.shape
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        non_black = np.where(gray > 20)
+        if len(non_black[0]) > 0:
+            min_y, max_y = int(np.min(non_black[0])), int(np.max(non_black[0]))
+            min_x, max_x = int(np.min(non_black[1])), int(np.max(non_black[1]))
+            if min_x > int(w * 0.03) or (w - 1 - max_x) > int(w * 0.03) or min_y > int(h * 0.03) or (h - 1 - max_y) > int(h * 0.03):
+                crop_w = max_x - min_x + 1
+                crop_h = max_y - min_y + 1
+                return f"crop={crop_w}:{crop_h}:{min_x}:{min_y},"
+    except Exception:
+        pass
+    return ""
+
+
 def scan_video_for_red_headshots(video_path, sample_fps=4.0):
     """Scans gameplay video for RED HEADSHOT damage numbers."""
     cap = cv2.VideoCapture(str(video_path))
@@ -211,7 +234,14 @@ def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
         if gameplay_files:
             print(f"📦 [Recursos Personalizados] Encontrados {len(gameplay_files)} videos subidos por el usuario.")
     else:
-        exclude_kw = ["pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro"]
+        exclude_kw = [
+            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro",
+            "img_1355", "img_1372", "img_1356", "img_1366"
+        ]
+        # Also exclude asesoria call clips IMG_1326 to IMG_1335 from gameplay montage
+        for i in range(1326, 1336):
+            exclude_kw.append(f"img_{i}")
+
         for ext in video_exts:
             for f in target_dir.rglob(ext):
                 p_str = str(f).lower()
@@ -222,9 +252,17 @@ def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
     # Fallback to official jugadas if user uploaded no video clips
     if not gameplay_files:
         print("ℹ️ Usando clips de jugadas maestras oficiales...")
+        exclude_kw = [
+            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro",
+            "img_1355", "img_1372", "img_1356", "img_1366"
+        ]
+        for i in range(1326, 1336):
+            exclude_kw.append(f"img_{i}")
+
         for ext in video_exts:
             for f in JUGADAS_DIR.rglob(ext):
-                if "intro" in f.name.lower():
+                p_str = str(f).lower()
+                if any(ex in p_str for ex in exclude_kw):
                     continue
                 gameplay_files.append(f)
 
@@ -417,67 +455,39 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     # Sort memes chronologically by cut time in voiceover
     raw_meme_events = sorted(raw_meme_events, key=lambda x: x["time"])
 
-    # Sanitize memes to ensure clean gaps (at least 2.5s spacing, within voiceover bounds)
-    # Crucial rule: The first 3.5 seconds of a Short are strictly reserved for the Headshot Gameplay Hook!
+    # Strictly green-screen memes only in Shorts (no 16:9 cutaways)
+    # Crucial rule: Gameplay and voiceover run smoothly without freezing or pausing!
     meme_events = []
-    last_cut = 0.0
+    last_meme_t = 0.0
     for m in raw_meme_events:
+        is_green = m.get("is_green_screen", False) or "pantalla verde" in str(m.get("meme_path", "")).lower()
+        if not is_green:
+            continue
         t = m["time"]
         if t < 3.5:
             continue
-        if t >= last_cut + 2.5 and t < total_vo_dur - 0.5:
+        if t >= last_meme_t + 3.0 and t < total_vo_dur - 1.0:
+            m["is_green_screen"] = True
+            m["out_time"] = t
+            m["out_end"] = t + m["duration"]
             meme_events.append(m)
-            last_cut = t
+            last_meme_t = t
 
-    # ── TIMELINE SHIFT CALCULATIONS ─────────────────────────────────────────
-    cum_meme_time = sum(m["duration"] for m in meme_events)
-    for i, m in enumerate(meme_events):
-        # Precise start in output: original voiceover cut time + duration of preceding memes
-        m["out_time"] = m["time"] + sum(prev["duration"] for prev in meme_events[:i])
-        m["out_end"] = m["out_time"] + m["duration"]
+    # ── CONTINUOUS SHORTS TIMELINE (NO FREEZING, NO AUDIO PAUSES) ────────────
+    total_output_dur = total_vo_dur
 
     def map_vo_time_to_output(t: float) -> float:
-        """Maps an original voiceover timestamp to the shifted output video timeline (incorporating meme pauses)."""
-        shift = 0.0
-        for m in meme_events:
-            if m["time"] < t:
-                shift += m["duration"]
-        return t + shift
+        return t
 
-    total_output_dur = total_vo_dur + cum_meme_time
-
-    # Shift visual events
+    # Map visual events directly to voiceover timestamps (pure audio synchronization)
     visual_events = []
     for v in raw_visual_events:
         v_copy = dict(v)
-        v_out_st = map_vo_time_to_output(v["time"])
-        v_copy["out_time"] = v_out_st
-        v_copy["out_end"] = v_out_st + v["duration"]
+        v_copy["out_time"] = v["time"]
+        v_copy["out_end"] = v["time"] + v["duration"]
         visual_events.append(v_copy)
 
-    # If user uploaded custom images/stickers, inject them as visual overlay events
-    if custom_gameplay_dir and Path(custom_gameplay_dir).exists():
-        custom_imgs = []
-        for ext in ["*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.webp"]:
-            for f in Path(custom_gameplay_dir).rglob(ext):
-                custom_imgs.append(f)
-        if custom_imgs:
-            print(f"🖼️ [Recursos Personalizados] Inyectando {len(custom_imgs)} imágenes subidas por el usuario.")
-            spacing = max(4.0, total_output_dur / (len(custom_imgs) + 1))
-            for c_i, c_img in enumerate(custom_imgs):
-                img_t = 3.8 + (c_i * spacing)
-                if img_t < total_output_dur - 2.0:
-                    visual_events.append({
-                        "time": img_t,
-                        "out_time": img_t,
-                        "duration": 3.0,
-                        "out_end": img_t + 3.0,
-                        "label": f"Custom: {c_img.name}",
-                        "asset_path": str(c_img),
-                        "type": "custom_image"
-                    })
-
-    print(f"⏱️ Timeline Architecture: Voiceover = {total_vo_dur:.2f}s | Memes = {cum_meme_time:.2f}s | Total Video = {total_output_dur:.2f}s")
+    print(f"⏱️ Timeline Architecture: Voiceover = {total_vo_dur:.2f}s | Memes = {len(meme_events)} Green-Screen Overlays | Video = {total_output_dur:.2f}s")
     print(f"🚫 Intro Status: Strictly EXCLUDED for Shorts (Duration = 0.00s)")
     print(f"🤡 Contextual Memes ({len(meme_events)} scheduled with Audio Hard-Cut):")
     for m in meme_events:
@@ -779,7 +789,17 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
                 pass
 
         # 9:16 Optimized Scaling & Placement
-        if is_green:
+        if v_ev.get("type") == "avatar_fullscreen":
+            # User requirement: "en el avatar quiero que tenga un tamaño mas grande amplio cubriendo la pantalla"
+            scale_filter = "scale=980:1500:force_original_aspect_ratio=decrease"
+            pos_expr = "x=(W-w)/2:y=(H-h)/2"
+            pad_filter = ""
+        elif v_ev.get("type") == "asesoria":
+            # User requirement: Asesoria card / interview with client
+            scale_filter = "scale=750:1150:force_original_aspect_ratio=decrease"
+            pos_expr = "x=(W-w)/2:y=180"
+            pad_filter = ",pad=iw+6:ih+6:3:3:color=white@0.35"
+        elif is_green:
             # Full screen green screen overlay (e.g. LLUVIA DE DINERO)
             scale_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,colorkey=0x00FF00:0.3:0.2"
             pos_expr = "x=(W-w)/2:y=(H-h)/2"
@@ -790,13 +810,9 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             pos_expr = "x=(W-w)/2:y=160"
             pad_filter = ",pad=iw+6:ih+6:3:3:color=white@0.35"
         elif is_transparent:
-            # Transparent weapon cutout floating above centered gameplay
-            if v_ev.get("type") == "weapon":
-                scale_filter = "scale=720:380:force_original_aspect_ratio=decrease"
-                pos_expr = "x=(W-w)/2:y=180"
-            else:
-                scale_filter = "scale=620:360:force_original_aspect_ratio=decrease"
-                pos_expr = "x=(W-w)/2:y=180"
+            # Transparent cutout floating above centered gameplay
+            scale_filter = "scale=650:360:force_original_aspect_ratio=decrease"
+            pos_expr = "x=(W-w)/2:y=180"
             pad_filter = ""
         else:
             # Framed card in upper section
@@ -817,7 +833,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         )
         curr_v = next_v
 
-    # 3. Overlay Contextual Memes (Shifted timestamps, reaction cut)
+    # 3. Overlay Green-Screen Memes ("un poco más arriba", above the center crosshairs)
     for m_i, m_item in enumerate(meme_input_info):
         m_ev = m_item["event"]
         m_out_t = m_ev["out_time"]
@@ -827,23 +843,15 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         m_orient = get_video_orientation_filter(m_path)
         next_v = f"v_meme_{m_i}"
 
-        if m_ev["is_green_screen"]:
-            filter_parts.append(
-                f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.2f}/TB,{m_orient}"
-                f"scale=1080:1920:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[m_proc_{m_i}];"
-            )
-            filter_parts.append(
-                f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+m_dur:.2f})':x=(W-w)/2:y=(H-h)/2:eof_action=pass[{next_v}];"
-            )
-        else:
-            # For 9:16 Shorts, display standard 16:9 memes as centered floating reaction cards
-            filter_parts.append(
-                f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.2f}/TB,{m_orient}"
-                f"scale=980:550:force_original_aspect_ratio=decrease,pad=986:556:3:3:color=white@0.3,setsar=1,fps=60[m_proc_{m_i}];"
-            )
-            filter_parts.append(
-                f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+min(m_dur, 1.8):.2f})':x=(W-w)/2:y=(H-h)/2:eof_action=pass[{next_v}];"
-            )
+        # Positioned in upper third so center headshot action is not covered
+        crop_filt = get_green_screen_crop_filter(m_path)
+        filter_parts.append(
+            f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.2f}/TB,{m_orient}{crop_filt}"
+            f"scale=750:1300:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[m_proc_{m_i}];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_out_t:.2f},{m_out_t+m_dur:.2f})':x=(W-w)/2:y=280:eof_action=pass[{next_v}];"
+        )
         curr_v = next_v
 
     # 4. Transparent Green-Screen Like & Subscribe Badge Overlay near video end (Bottom area)
@@ -870,63 +878,13 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         )
         curr_v = "v_killcard"
 
-    # 5. Burn-in Subtitles (.ass)
-    filter_parts.append(f"[{curr_v}]null[v_overlays];")
-    rel_sub = "subtitles_temp_916.ass"
-    if os.path.exists(rel_sub):
-        filter_parts.append(f"[v_overlays]subtitles='{rel_sub}'[v_final];")
-    else:
-        filter_parts.append(f"[v_overlays]null[v_final];")
+    # 5. Output Video Stream (Subtitles completely removed per user instruction)
+    filter_parts.append(f"[{curr_v}]null[v_final];")
 
-    # 6. AUDIO SPLICING & MIXING: HARD CUT VOICEOVER DURING MEMES
-    if not meme_input_info:
-        filter_parts.append(
-            f"[0:a]volume=1.0,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_spliced];"
-        )
-    else:
-        vo_chunks = []
-        k = len(meme_input_info)
-        last_cut = 0.0
-
-        for i, m_item in enumerate(meme_input_info):
-            cut_time = m_item["event"]["time"]
-            m_dur = m_item["event"]["duration"]
-            m_idx = m_item["idx"]
-            has_aud = m_item["has_audio"]
-
-            # Voiceover segment before meme
-            filter_parts.append(
-                f"[0:a]atrim=start={last_cut:.3f}:end={cut_time:.3f},asetpts=PTS-STARTPTS,"
-                f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_chunk_{i}];"
-            )
-            vo_chunks.append(f"[vo_chunk_{i}]")
-
-            # Meme audio segment
-            if has_aud:
-                filter_parts.append(
-                    f"[{m_idx}:a]atrim=start=0:end={m_dur:.3f},asetpts=PTS-STARTPTS,"
-                    f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume=0.95[m_aud_chunk_{i}];"
-                )
-            else:
-                filter_parts.append(
-                    f"aevalsrc=0:d={m_dur:.3f}:s=44100:c=stereo,"
-                    f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[m_aud_chunk_{i}];"
-                )
-            vo_chunks.append(f"[m_aud_chunk_{i}]")
-
-            last_cut = cut_time
-
-        # Final voiceover segment after last meme
-        filter_parts.append(
-            f"[0:a]atrim=start={last_cut:.3f}:end={total_vo_dur:.3f},asetpts=PTS-STARTPTS,"
-            f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_chunk_{k}];"
-        )
-        vo_chunks.append(f"[vo_chunk_{k}]")
-
-        concat_audio_str = "".join(vo_chunks)
-        filter_parts.append(
-            f"{concat_audio_str}concat=n={len(vo_chunks)}:v=0:a=1[vo_spliced];"
-        )
+    # 6. AUDIO: CONTINUOUS VOICEOVER (No pausing or freezing in Shorts)
+    filter_parts.append(
+        f"[0:a]volume=1.0,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_spliced];"
+    )
 
     # Background Music (covers total_output_dur at low level)
     filter_parts.append(
@@ -935,6 +893,21 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     filter_parts.append(f"[2:a]volume=0.4[whoosh];")
 
     mix_inputs = ["[vo_spliced]", "[bgm_quiet]", "[whoosh]"]
+
+    # Green-screen meme audio (mixed in parallel without cutting voiceover)
+    for m_i, m_item in enumerate(meme_input_info):
+        if m_item["has_audio"]:
+            m_ev = m_item["event"]
+            m_out_t = m_ev["out_time"]
+            m_dur = m_ev["duration"]
+            m_in_idx = m_item["idx"]
+            delay_ms = int(m_out_t * 1000)
+            lbl = f"m_aud_{m_i}"
+            filter_parts.append(
+                f"[{m_in_idx}:a]atrim=start=0:end={m_dur:.3f},asetpts=PTS-STARTPTS,"
+                f"adelay={delay_ms}|{delay_ms},volume=0.85,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[{lbl}];"
+            )
+            mix_inputs.append(f"[{lbl}]")
 
     # PDF Spec: SFX Bass Drop with ducking during impact
     if bass_in_idx is not None:

@@ -71,12 +71,12 @@ DIAMONDS_CATALOG = {
     "chest_image": os.path.join(DIR_IMAGES, "Diamantes.PNG"),
     "pass_poster": os.path.join(DIR_IMAGES, "torneo.jpeg"),
     "green_screen_money": os.path.join(DIR_GREEN_MEMES, "LLUVIA DE DINERO 1.MP4"),
-    "emotes_video": os.path.join(DIR_GAMEPLAYS, "emotes.MP4"),
     "sfx": os.path.join(DIR_SFX, "ding-sound-effect_2.mp3"),
     "keywords": [
-        "diamante", "diamantes", "recarga", "recargar", "dinero", "plata",
-        "oro", "monedas", "comprar diamantes", "diamantes gratis", "millonario",
-        "tienda misteriosa", "ruleta magica", "ruleta mágica", "economía", "gastar"
+        "venta de diamantes", "venta de diamante", "diamantes mas baratos", "diamantes más baratos",
+        "diamante mas barato", "diamante más barato", "conseguir diamantes", "consigue los diamantes",
+        "recargar diamantes", "recarga de diamantes", "comprar diamantes", "diamantes baratos",
+        "diamantes con descuento", "tienda de diamantes", "paquetes de diamantes", "recargas de diamantes"
     ]
 }
 
@@ -89,9 +89,8 @@ PASS_AND_TOURNAMENT_CATALOG = {
     "sfx": os.path.join(DIR_SFX, "ding-sound-effect_2.mp3"),
     "keywords": [
         "pase elite", "pase élite", "pases elite", "pases élite", "pase de batalla",
-        "el pase", "los pases", "un pase", "comprar pase", "booyah pass",
-        "torneo", "torneos", "competencia", "sala", "salas", "campeonato",
-        "copa", "premio", "premios"
+        "comprar pase", "booyah pass", "torneo oficial", "torneos oficiales",
+        "campeonato", "copa booyah"
     ]
 }
 
@@ -103,39 +102,39 @@ TOP_GLOBAL_CATALOG = {
     "regional_top": os.path.join(PROJECT_ROOT, "assets", "video free fire", "regional_top.png"),
     "sfx": os.path.join(DIR_SFX, "dun-dun-dun-sound-effect-brass_8nFBccR.mp3"),
     "keywords": [
-        "top global", "top globales", "ranking", "gran maestro", "heroico",
-        "tabla", "tablas", "puntos", "competitivo", "posicion", "clasificacion",
-        "lider", "líder", "mejores del mundo", "regional", "subir de rango", "rango"
+        "subir a gran maestro", "llegar a gran maestro", "rango gran maestro",
+        "top global", "tabla de clasificacion", "ranking regional"
     ]
 }
 
 # 4. SENSITIVITY & CONFIGURATION (Sensibilidad, Miras, Botón de disparo)
 SENSITIVITY_CATALOG = {
     "in_game_menu": os.path.join(DIR_IMAGES, "sencibilidad.jpg"),
-    "phone_dpi_menu": os.path.join(DIR_IMAGES, "Asesoria.PNG"),
     "green_screen_thinking": os.path.join(DIR_GREEN_MEMES, "ECUACIONES PENSANDO.mp4"),
     "sfx": os.path.join(DIR_SFX, "mouse-click-sound.mp3"),
     "keywords": [
-        "sensibilidad", "sencibilidad", "general", "mira", "punto rojo",
-        "mira 2x", "mira 4x", "ajuste", "ajustes", "velocidad", "boton de disparo",
-        "botón de disparo", "levantar mira", "afinas", "punto exacto", "control",
-        "subes de 10", "subes", "bajas", "configuracion", "configuración"
+        "sensibilidad", "sensi", "mira general", "punto rojo", "mira 2x", "mira 4x",
+        "calibrar tu mira", "calibra tu mira", "calibrar sensibilidad", "calibra tu sensibilidad",
+        "configuracion de sensibilidad", "configuración de sensibilidad", "boton de disparo", "botón de disparo"
     ]
 }
 
-# 5. DPI & MOBILE DEVICE (Celular, Pantalla, Gama, DPI)
-DPI_AND_DEVICE_CATALOG = {
+# 5. ASESORÍA / ENTREVISTA (Llamadas, Sesiones personalizadas con el creador Cris FF)
+ASESORIA_CATALOG = {
     "device_advice": os.path.join(DIR_IMAGES, "Asesoria.PNG"),
-    "sensitivity_img": os.path.join(DIR_IMAGES, "sencibilidad.jpg"),
+    "asesoria_video": os.path.join(DIR_GAMEPLAYS, "IMG_1326.MOV"),
     "green_screen_thinking": os.path.join(DIR_GREEN_MEMES, "ECUACIONES PENSANDO.mp4"),
     "sfx": os.path.join(DIR_SFX, "mouse-click-sound.mp3"),
     "keywords": [
-        "dpi", "celular", "pantalla", "pantallas", "gama", "modelo", "samsung",
-        "iphone", "xiaomi", "motorola", "ancho minimo", "ancho mínimo", "tactil", "táctil"
+        "estuvo en una asesoria", "estuvo en una asesoría", "estuvo en asesoria", "estuvo en asesoría",
+        "asesoria conmigo", "asesoría conmigo", "entrevista conmigo", "estuvo en una entrevista",
+        "sesion personalizada", "sesión personalizada", "asesoria personalizada", "asesoría personalizada",
+        "llamada conmigo", "llamada de asesoria", "llamada de asesoría"
     ]
 }
+DPI_AND_DEVICE_CATALOG = ASESORIA_CATALOG
 
-# 6. BOOK, WEBSITE & CODE GUIDES (Código Headshot, Guía, Libro, Web)
+# 6. BOOK, WEBSITE & CODE GUIDES (Código Headshot, Guía, Libro, Web codigoheadshot.online)
 BOOK_AND_WEB_CATALOG = {
     "web_banner": os.path.join(DIR_IMAGES, "codigoheadshot.png"),
     "rank_badge": os.path.join(DIR_IMAGES, "gran maestro.png"),
@@ -143,9 +142,11 @@ BOOK_AND_WEB_CATALOG = {
     "green_screen_book": os.path.join(DIR_GREEN_MEMES, "LIBRO SECRETO CON IMAGENES.avi"),
     "sfx": os.path.join(DIR_SFX, "ding-sound-effect_2.mp3"),
     "keywords": [
-        "libro", "guia", "guía", "pagina", "página", "web", "descarga",
-        "descargar", "link", "enlace", "pdf", "sitio", "metodo", "método",
-        "secreto", "truco", "paso a paso", "codigo", "código", "valores exactos"
+        "vayan a codigoheadshot", "vayan a codigo headshot", "vayan a código headshot",
+        "entren a codigoheadshot", "entren a codigo headshot", "entren a código headshot",
+        "en codigoheadshot", "en codigo headshot", "en código headshot",
+        "la pagina codigoheadshot", "la pagina codigo headshot", "la página codigoheadshot", "la página codigo headshot",
+        "codigoheadshot.online", "link en mi perfil", "comenta codigo", "comenta código"
     ]
 }
 
@@ -158,21 +159,18 @@ EMOTES_CATALOG = {
     "green_screen_money": os.path.join(DIR_GREEN_MEMES, "LLUVIA DE DINERO 1.MP4"),
     "sfx": os.path.join(DIR_SFX, "romanceeeeeeeeeeeeee.mp3"),
     "keywords": [
-        "emote", "emotes", "baile", "bailar", "toxico", "tóxico", "risa",
-        "burlarse", "burla", "celebrar", "festejo", "bailecito", "presumir", "festejar"
+        "emote de la risa", "baile toxico", "baile tóxico", "hacer emote", "tirar emote"
     ]
 }
 
-# 8. WEAPONS & SKINS (AK47 Dragon, Groza, M16, Modos PVP / Battle Royale)
+# 8. WEAPONS & SKINS (AK47 Dragon, Groza, M16 - Strict explicit trigger only)
 WEAPONS_CATALOG = {
     "ak47_dragon": os.path.join(DIR_WEAPONS, "9a6f1f7dee653723abd0ee9dada3b5c5-removebg-preview.png"),
     "groza_booyah": os.path.join(DIR_WEAPONS, "b506a7f0c9e7b2fc6dcbb2180f161bbd-removebg-preview.png"),
     "m16_rifle": os.path.join(DIR_WEAPONS, "c79e600e6a5c6f2fecdaac0ee8ced008-removebg-preview.png"),
     "sfx": os.path.join(DIR_SFX, "punch-gaming-sound-effect-hd_RzlG1GE.mp3"),
     "keywords": [
-        "arma", "armas", "ak47", "dragon", "flama azul", "evolutiva", "groza",
-        "escopeta", "m1014", "mp40", "desert", "rifle", "disparo", "daño",
-        "pwp", "pvp", "batel rolal", "battle royale", "duelo de escuadras", "balas"
+        "ak47 evolutiva", "ak-47 evolutiva", "ak47 dragon", "ak-47 dragón", "dragon flama azul", "dragón flama azul", "groza booyah"
     ]
 }
 
@@ -181,8 +179,7 @@ RESULTS_AND_STATS_CATALOG = {
     "results_image": os.path.join(DIR_IMAGES, "resultados.PNG"),
     "sfx": os.path.join(DIR_SFX, "ding-sound-effect_2.mp3"),
     "keywords": [
-        "resultado", "resultados", "daño efectivo", "daño por segundo",
-        "estadistica", "estadisticas", "estadísticas", "kills", "bajas", "partida"
+        "tabla de resultados", "daño efectivo final", "estadisticas de la partida", "estadísticas de la partida"
     ]
 }
 
@@ -193,8 +190,7 @@ CHARACTERS_AND_PROFILE_CATALOG = {
     "logo_garena": os.path.join(DIR_IMAGES, "logo garena.png"),
     "likes": os.path.join(DIR_IMAGES, "likes.PNG"),
     "keywords": [
-        "personaje", "skin", "avatar", "garena", "jugador", "perfil", "cuenta",
-        "pro player", "comunidad", "creador"
+        "mi avatar", "el avatar", "mi cuenta", "cris ff", "crisff", "el creador", "mi perfil"
     ]
 }
 CHARACTERS_CATALOG = CHARACTERS_AND_PROFILE_CATALOG
@@ -204,8 +200,7 @@ CALL_TO_ACTION_CATALOG = {
     "likes_badge": os.path.join(DIR_IMAGES, "likes.PNG"),
     "green_screen_subscribe": os.path.join(DIR_GREEN_MEMES, "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4"),
     "keywords": [
-        "suscribete", "suscríbete", "canal", "like", "campana", "campanita",
-        "comenta", "comparte", "apoya", "seguidores"
+        "suscribete", "suscríbete", "deja tu like", "meta de likes", "activa la campanita"
     ]
 }
 
@@ -228,14 +223,24 @@ MUSIC_CATALOG = [
     os.path.join(DIR_MUSIC, "NUNCA MUDA [ ULTRA SLOWED ] [BRAZILIAN PHONK].mp3"),
 ]
 
-# 14. GAMEPLAY VIDEOS (33 raw recordings in 'free fire jugadas')
+# 14. GAMEPLAY VIDEOS (Strict genuine combat clips, excluding asesoria/capcut/whatsapp non-gameplay files)
 def get_gameplay_videos() -> List[str]:
     valid_exts = (".mp4", ".mov", ".m4v")
     if not os.path.exists(DIR_GAMEPLAYS):
         return []
+
+    excluded_names = {
+        "emotes.mp4", "intro.mp4", "img_1355.mp4", "img_1372.mp4", "img_1356.mp4", "img_1366.mp4"
+    }
+    for i in range(1326, 1336):
+        excluded_names.add(f"img_{i}.mov")
+        excluded_names.add(f"img_{i}.mp4")
+
     files = []
     for f in sorted(os.listdir(DIR_GAMEPLAYS)):
-        if f.lower().endswith(valid_exts) and "emotes" not in f.lower():
+        if f.lower().endswith(valid_exts):
+            if f.lower() in excluded_names:
+                continue
             p = os.path.join(DIR_GAMEPLAYS, f)
             if os.path.isfile(p):
                 files.append(p)
