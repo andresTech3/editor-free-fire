@@ -548,21 +548,24 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         gdur = n_frames / fps_in
         cap.release()
 
-        if gdur < 0.5:
+        if gdur < 1.8:
             continue
 
-        tl_dur = round(random.uniform(1.3, 1.8), 2)
-        speed = round(random.uniform(1.22, 1.38), 2)
+        tl_dur = round(random.uniform(2.2, 3.2), 2)
+        speed = round(random.uniform(1.0, 1.06), 2)
         source_dur = round(tl_dur * speed, 2)
 
-        if gdur <= 2.2:
+        # Avoid motionless spawn cage at round start in Free Fire recordings
+        safe_min_st = 2.0 if gdur >= 5.0 else 0.0
+
+        if gdur <= 2.5:
             cand_start = 0.0
             source_dur = round(gdur, 2)
             tl_dur = round(source_dur / speed, 2)
             is_hs = False
         else:
-            if source_dur > gdur:
-                source_dur = round(gdur - 0.1, 2)
+            if source_dur > (gdur - safe_min_st):
+                source_dur = round(gdur - safe_min_st - 0.1, 2)
                 tl_dur = round(source_dur / speed, 2)
 
             # Check for red headshot timestamp
@@ -571,7 +574,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             is_hs = False
             if hs_list:
                 for (hs_t, hs_sc) in hs_list:
-                    st = max(0.0, hs_t - 0.7)
+                    st = max(safe_min_st, hs_t - 1.2)
                     if st + source_dur <= gdur:
                         if not any(abs(st - existing) < (source_dur + 1.0) for existing in used_ranges[gpath]):
                             cand_start = st
@@ -579,15 +582,15 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
                             break
 
             if cand_start is None:
-                max_st = max(0.0, gdur - source_dur)
-                if max_st > 0:
+                max_st = max(safe_min_st, gdur - source_dur)
+                if max_st > safe_min_st:
                     for _ in range(15):
-                        st = round(random.uniform(0.0, max_st), 2)
+                        st = round(random.uniform(safe_min_st, max_st), 2)
                         if not any(abs(st - existing) < (source_dur + 1.0) for existing in used_ranges[gpath]):
                             cand_start = st
                             break
                 if cand_start is None:
-                    cand_start = 0.0
+                    cand_start = safe_min_st
 
         used_ranges[gpath].append(cand_start)
         broll_segments.append({
@@ -658,22 +661,8 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         cmd.extend(["-f", "lavfi", "-i", "color=c=black@0.0:s=1080x1920:d=1"])
 
     input_idx = 4
-
-    # Remotion KillCardOverlay (PDF Spec: Section 3 & 4)
-    remotion_overlay_file = generate_killcard_overlay_if_needed(headshots=3, player_tag="CODIGO HEADSHOT PRO")
     remotion_in_idx = None
-    if remotion_overlay_file and os.path.exists(remotion_overlay_file):
-        cmd.extend(["-i", remotion_overlay_file])
-        remotion_in_idx = input_idx
-        input_idx += 1
-
-    # SFX Bass Drop (PDF Spec: Section 4)
-    sfx_bass_drop = PROJECT_ROOT / "sfx" / "sfx_bass_drop.wav"
     bass_in_idx = None
-    if sfx_bass_drop.exists():
-        cmd.extend(["-i", str(sfx_bass_drop)])
-        bass_in_idx = input_idx
-        input_idx += 1
 
     # Inputs 4+: B-roll gameplay clips
     broll_input_indices = []
@@ -735,23 +724,20 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     filter_parts = []
     v_concat_labels = []
 
-    # 1. Process Video B-rolls into 9:16 (PDF Spec: Zoom Shakes & Color Grading)
+    # 1. Process Video B-rolls into 9:16 (Fluid Gameplay: Uniform 60 FPS, No Zoompan Stutter)
     for b_i, seg in enumerate(broll_segments):
         in_i = broll_input_indices[b_i]
         lbl = f"v_broll_{b_i}"
         rot_filter = get_video_orientation_filter(seg["path"])
         spd = seg.get("speed", 1.0)
         pts_filter = f"setpts=(PTS-STARTPTS)/{spd:.2f}" if spd != 1.0 else "setpts=PTS-STARTPTS"
-        is_hs = seg.get("is_headshot", False)
 
-        # PDF Specification: Filtro de Reescalado y Zoom Dinámico (Impact Shakes) & Corrección de Color
-        # eq=contrast=1.18:saturation=1.35:brightness=0.02, zoompan=z='if(between(in,45,65),1.25,1.0)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'
-        color_filter = ",eq=contrast=1.18:saturation=1.35:brightness=0.02"
-        zoom_filter = ",zoompan=z='if(between(in,45,65),1.25,1.0)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=60" if is_hs else ""
+        # Punchy Free Fire color grading without frame-dropping zoompan
+        color_filter = ",eq=contrast=1.15:saturation=1.25:brightness=0.02"
 
         filter_parts.append(
             f"[{in_i}:v]{pts_filter},{rot_filter}"
-            f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2{color_filter}{zoom_filter},setsar=1,fps=60[{lbl}];"
+            f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2{color_filter},setsar=1,fps=60[{lbl}];"
         )
         v_concat_labels.append(f"[{lbl}]")
 
@@ -867,21 +853,10 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     )
     curr_v = "v_with_cta"
 
-    # 4b. Remotion KillCardOverlay (PDF Spec: Section 3 & 4)
-    # Transparent overlay with colorkey so it doesn't black out the gameplay hook!
-    if remotion_in_idx is not None:
-        filter_parts.append(
-            f"[{remotion_in_idx}:v]format=yuva420p,colorkey=0x000000:0.25:0.1[killcard_alpha];"
-        )
-        filter_parts.append(
-            f"[{curr_v}][killcard_alpha]overlay=0:0:enable='between(t,1.2,3.8)':eof_action=pass[v_killcard];"
-        )
-        curr_v = "v_killcard"
-
     # 5. Output Video Stream (Subtitles completely removed per user instruction)
     filter_parts.append(f"[{curr_v}]null[v_final];")
 
-    # 6. AUDIO: CONTINUOUS VOICEOVER (No pausing or freezing in Shorts)
+    # 6. AUDIO: CONTINUOUS VOICEOVER & SUBTLE BGM (Memes are 100% silent visual overlays)
     filter_parts.append(
         f"[0:a]volume=1.0,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_spliced];"
     )
@@ -890,31 +865,9 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     filter_parts.append(
         f"[1:a]atrim=start=0:duration={total_output_dur:.2f},asetpts=PTS-STARTPTS,volume=0.08[bgm_quiet];"
     )
-    filter_parts.append(f"[2:a]volume=0.4[whoosh];")
+    filter_parts.append(f"[2:a]volume=0.35[whoosh];")
 
     mix_inputs = ["[vo_spliced]", "[bgm_quiet]", "[whoosh]"]
-
-    # Green-screen meme audio (mixed in parallel without cutting voiceover)
-    for m_i, m_item in enumerate(meme_input_info):
-        if m_item["has_audio"]:
-            m_ev = m_item["event"]
-            m_out_t = m_ev["out_time"]
-            m_dur = m_ev["duration"]
-            m_in_idx = m_item["idx"]
-            delay_ms = int(m_out_t * 1000)
-            lbl = f"m_aud_{m_i}"
-            filter_parts.append(
-                f"[{m_in_idx}:a]atrim=start=0:end={m_dur:.3f},asetpts=PTS-STARTPTS,"
-                f"adelay={delay_ms}|{delay_ms},volume=0.85,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[{lbl}];"
-            )
-            mix_inputs.append(f"[{lbl}]")
-
-    # PDF Spec: SFX Bass Drop with ducking during impact
-    if bass_in_idx is not None:
-        filter_parts.append(
-            f"[{bass_in_idx}:a]adelay=1200|1200,volume=1.0[sfx_bass_drop];"
-        )
-        mix_inputs.append("[sfx_bass_drop]")
 
     # Visual Event SFX tracks
     for v_i, v_item in enumerate(visual_input_info):
