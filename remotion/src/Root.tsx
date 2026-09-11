@@ -113,6 +113,8 @@ const defaultProps: ViralProps = {
 import { HUDSensibilidad } from "./HUDSensibilidad";
 import { CTALikeSubscribe } from "./CTALikeSubscribe";
 import { KillCardOverlay } from "./KillCardOverlay";
+import { TopicBadgeOverlay } from "./TopicBadgeOverlay";
+import { DiamondAlertOverlay } from "./DiamondAlertOverlay";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -172,6 +174,31 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={{
           headshots: 3,
           playerTag: "CODIGO HEADSHOT PRO",
+        }}
+      />
+      <Composition
+        id="TopicBadgeOverlay"
+        component={TopicBadgeOverlay}
+        durationInFrames={120}
+        fps={60}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          title: "TODO ROJO ACTIVADO",
+          badge: "TRUCO PRO FREE FIRE",
+          accentColor: "#FF2E55",
+        }}
+      />
+      <Composition
+        id="DiamondAlertOverlay"
+        component={DiamondAlertOverlay}
+        durationInFrames={180}
+        fps={60}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          amount: "+5,000",
+          subtitle: "RECARGA DE DIAMANTES FREE FIRE",
         }}
       />
     </>

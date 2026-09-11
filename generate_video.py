@@ -45,6 +45,11 @@ from core.orientation_helper import (
     get_media_orientation_filter,
     get_green_screen_crop_filter
 )
+from core.asset_catalog import (
+    SFX_CATALOG,
+    normalize_text,
+    save_recent_clips_history
+)
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
 DEFAULT_ASSETS_DIR = PROJECT_ROOT / "assets"
@@ -204,6 +209,10 @@ def main():
         else:
             curr_t += dur
 
+    # Save sampled gameplay clips to persistent history to guarantee cross-run variety
+    chosen_clips = [hp["path"] for hp in hook_planes] + [s2["path"] for s2 in state2_clips] + [s3["path"] for s3 in state3_clips]
+    save_recent_clips_history(chosen_clips)
+
     # State 2 & 3 Memes (snapped to nearest beat, guaranteed at least 2-3 memes)
     meme_events = []
     for trig in triggers.get("meme", []):
@@ -340,6 +349,94 @@ def main():
                 cta_badge_path = str(c_cand)
                 break
 
+    # Scan contextual SFX matching spoken words with semantic arguments
+    sfx_events = []
+    last_sfx_t = -5.0
+    words_list = vo_data.get("words", [])
+
+    sfx_rules = [
+        ("vine_boom", ["truco", "secreto", "increible", "increíble", "locura", "ojo", "atencion", "mira esto", "formula", "fórmula", "nadie sabe"]),
+        ("bone_crack", ["cabeza", "headshot", "rojos", "bajamos", "muerto", "disparo"]),
+        ("punch", ["golpe", "pegas", "pum", "pecho", "tiro"]),
+        ("ding", ["diamante", "diamantes", "moneda", "monedas", "recarga", "codigo", "código", "consejo"]),
+        ("error", ["manco", "fallar", "fallé", "mentira", "no sirve", "morir", "falso"]),
+        ("dramatic", ["peligro", "cuidado", "rival", "dificil", "difícil", "imposible"]),
+        ("click", ["boton", "botón", "ajustes", "suscribete", "suscríbete", "like"]),
+        ("romance", ["baile", "emote", "amor", "toxico", "tóxico"]),
+    ]
+
+    for w in words_list:
+        w_str = normalize_text(w.get("word", ""))
+        w_start = w.get("start", 0.0)
+        if w_start < last_sfx_t + 2.8:
+            continue
+
+        for sfx_key, keywords in sfx_rules:
+            if any(kw in w_str for kw in keywords):
+                sfx_file = SFX_CATALOG.get(sfx_key)
+                if sfx_file and os.path.exists(sfx_file):
+                    sfx_events.append({
+                        "time": round(w_start, 2),
+                        "sfx_path": sfx_file,
+                        "type": sfx_key,
+                        "trigger_word": w_str
+                    })
+                    last_sfx_t = w_start
+                    break
+
+    if sfx_events:
+        print(f"🔊 Efectos de Sonido con Argumentos Semánticos ({len(sfx_events)} sincronizados al audio):")
+        for s in sfx_events:
+            print(f"   • [{s['time']:.2f}s] Palabra clave: '{s['trigger_word']}' ➔ SFX '{s['type']}' ({Path(s['sfx_path']).name})")
+
+    # Select contextual Remotion animation
+    overlays_dir = PROJECT_ROOT / "overlays"
+    remotion_anim = None
+
+    if any(k in transcript_norm for k in ["diamante", "diamantes", "recarga"]):
+        p = overlays_dir / "diamond_alert.webm"
+        if p.exists():
+            remotion_anim = {
+                "name": "DiamondAlertOverlay",
+                "path": str(p),
+                "time": 2.0,
+                "duration": 3.0,
+                "reason": "Tema: Venta / Recarga de Diamantes detectado"
+            }
+    elif is_sens_topic:
+        p = overlays_dir / "hud_sensibilidad.webm"
+        if p.exists():
+            remotion_anim = {
+                "name": "HUDSensibilidad",
+                "path": str(p),
+                "time": max(5.0, total_dur - 5.5),
+                "duration": 5.0,
+                "reason": "Tema: Calibración de Sensibilidad / Miras / DPI"
+            }
+    elif any(k in transcript_norm for k in ["headshot", "rojo", "rojos", "combo", "modo diablo", "insano"]):
+        p = overlays_dir / "remotion_overlay.webm"
+        if p.exists():
+            remotion_anim = {
+                "name": "KillCardOverlay",
+                "path": str(p),
+                "time": 2.0,
+                "duration": 2.6,
+                "reason": "Tema: Jugadas Insanas / Tiros Rojos / Headshot Combo"
+            }
+    else:
+        p = overlays_dir / "topic_badge.webm"
+        if p.exists():
+            remotion_anim = {
+                "name": "TopicBadgeOverlay",
+                "path": str(p),
+                "time": 1.0,
+                "duration": 2.0,
+                "reason": "Tema: Truco Free Fire / Hook de Apertura"
+            }
+
+    if remotion_anim:
+        print(f"✨ Animación Remotion con Argumentos: {remotion_anim['name']} ({remotion_anim['reason']}) [{remotion_anim['time']:.2f}s - {remotion_anim['time']+remotion_anim['duration']:.2f}s]")
+
     # ── STEP 6: COMPILE FFMPEG COMMAND ────────────────────────────────────────
     out_dir_path = Path(args.outdir).resolve()
     out_dir_path.mkdir(parents=True, exist_ok=True)
@@ -400,6 +497,27 @@ def main():
         cta_in_idx = input_idx
         cmd.extend(["-ss", "0", "-t", f"{min(4.0, total_dur - t_state4):.2f}", "-i", cta_badge_path])
         input_idx += 1
+
+    # Inputs: Dynamic Remotion WebM Overlay (TopicBadge, DiamondAlert, KillCard, HUDSensibilidad)
+    remotion_in_idx = None
+    if remotion_anim and os.path.exists(remotion_anim.get("path", "")):
+        rem_p = remotion_anim["path"]
+        rem_dur = remotion_anim["duration"]
+        cmd.extend(["-ss", "0", "-t", f"{rem_dur:.2f}", "-i", rem_p])
+        remotion_in_idx = input_idx
+        input_idx += 1
+
+    # Inputs: Contextual SFX with Semantic Arguments
+    sfx_input_info = []
+    for s_ev in sfx_events:
+        s_path = s_ev.get("sfx_path")
+        if s_path and os.path.exists(s_path):
+            cmd.extend(["-i", s_path])
+            sfx_input_info.append({
+                "event": s_ev,
+                "idx": input_idx
+            })
+            input_idx += 1
 
     # Build Filter Complex
     filter_parts = []
@@ -536,18 +654,52 @@ def main():
         )
         curr_v = "v_prefinal"
 
+    # Dynamic Remotion Overlay (TopicBadge, DiamondAlert, KillCard, HUDSensibilidad)
+    if remotion_in_idx is not None:
+        rem_t = remotion_anim["time"]
+        rem_dur = remotion_anim["duration"]
+        filter_parts.append(
+            f"[{remotion_in_idx}:v]setpts=PTS-STARTPTS+{rem_t:.3f}/TB,"
+            f"scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,setsar=1,fps=60[rem_proc];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][rem_proc]overlay=enable='between(t,{rem_t:.3f},{rem_t+rem_dur:.3f})':x=(W-w)/2:y=(H-h)/2:eof_action=pass[v_rem];"
+        )
+        curr_v = "v_rem"
+
     # Smooth finish (no freezing, no white flash, subtle 0.5s fade out to black at the end)
     fade_start = max(0.0, total_dur - 0.5)
     filter_parts.append(
         f"[{curr_v}]fade=t=out:st={fade_start:.2f}:d=0.5:color=black[v_final];"
     )
 
+    # Audio Mixing: Contextual SFX with ducked master audio
+    if sfx_input_info:
+        audio_mix_inputs = ["[0:a]"]
+        for s_i, s_item in enumerate(sfx_input_info):
+            s_idx = s_item["idx"]
+            s_t = s_item["event"]["time"]
+            delay_ms = int(s_t * 1000)
+            lbl = f"sfx_sem_{s_i}"
+            filter_parts.append(
+                f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.45[{lbl}];"
+            )
+            audio_mix_inputs.append(f"[{lbl}]")
+
+        mix_str = "".join(audio_mix_inputs)
+        filter_parts.append(
+            f"{mix_str}amix=inputs={len(audio_mix_inputs)}:duration=first:dropout_transition=2[a_final]"
+        )
+        audio_map = "[a_final]"
+    else:
+        audio_map = "0:a"
+
     filter_complex = "\n".join(filter_parts)
 
     cmd.extend([
         "-filter_complex", filter_complex,
         "-map", "[v_final]",
-        "-map", "0:a",
+        "-map", audio_map,
         "-c:v", "libx264",
         "-preset", "fast",
         "-b:v", "12M",

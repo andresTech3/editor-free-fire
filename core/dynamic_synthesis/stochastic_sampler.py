@@ -71,8 +71,7 @@ class StochasticAssetSampler:
                     name_lower = f.name.lower()
                     if "intro" in name_lower:
                         continue
-                    # Exclude non-gameplay recordings (calls, whatsapp, capcut screens)
-                    if any(ex in name_lower for ex in ["1326", "1327", "1328", "1329", "1330", "1331", "1332", "1333", "1334", "1335", "1355", "1372"]):
+                    if any(ex in name_lower for ex in ["intro", "img_1356", "img_1366"]):
                         continue
                     p_str = str(f.resolve())
                     # Check training keywords vs pvp
@@ -80,6 +79,11 @@ class StochasticAssetSampler:
                         self.pools["training"].append(p_str)
                     else:
                         self.pools["pvp"].append(p_str)
+
+        # Import persistent history prioritizer
+        from core.asset_catalog import prioritize_fresh_gameplay_videos
+        self.pools["pvp"] = prioritize_fresh_gameplay_videos(self.pools["pvp"])
+        self.pools["training"] = prioritize_fresh_gameplay_videos(self.pools["training"])
 
         # Fallback if training is empty
         if not self.pools["training"] and self.pools["pvp"]:

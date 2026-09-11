@@ -101,8 +101,41 @@ function main() {
     const tagIdx = args.indexOf("--tag");
     const playerTag = tagIdx !== -1 && args[tagIdx + 1] ? args[tagIdx + 1] : "CODIGO HEADSHOT PRO";
     const outIdx = args.indexOf("--out");
-    const outFile = outIdx !== -1 && args[outIdx + 1] ? args[outIdx + 1] : "remotion_overlay.mov";
+    const outFile = outIdx !== -1 && args[outIdx + 1] ? args[outIdx + 1] : "remotion_overlay.webm";
     renderKillCardOverlay(headshots, playerTag, outFile);
+    return;
+  }
+
+  if (args.includes("--topic")) {
+    const titleIdx = args.indexOf("--title");
+    const title = titleIdx !== -1 && args[titleIdx + 1] ? args[titleIdx + 1] : "TODO ROJO ACTIVADO";
+    const badgeIdx = args.indexOf("--badge");
+    const badge = badgeIdx !== -1 && args[badgeIdx + 1] ? args[badgeIdx + 1] : "TRUCO PRO FREE FIRE";
+    const colorIdx = args.indexOf("--color");
+    const accentColor = colorIdx !== -1 && args[colorIdx + 1] ? args[colorIdx + 1] : "#FF2E55";
+    const outIdx = args.indexOf("--out");
+    const outFile = outIdx !== -1 && args[outIdx + 1] ? args[outIdx + 1] : "topic_badge.webm";
+    renderOverlay("TopicBadgeOverlay", outFile, { title, badge, accentColor });
+    return;
+  }
+
+  if (args.includes("--diamond")) {
+    const amtIdx = args.indexOf("--amount");
+    const amount = amtIdx !== -1 && args[amtIdx + 1] ? args[amtIdx + 1] : "+5,000";
+    const subIdx = args.indexOf("--sub");
+    const subtitle = subIdx !== -1 && args[subIdx + 1] ? args[subIdx + 1] : "RECARGA DE DIAMANTES FREE FIRE";
+    const outIdx = args.indexOf("--out");
+    const outFile = outIdx !== -1 && args[outIdx + 1] ? args[outIdx + 1] : "diamond_alert.webm";
+    renderOverlay("DiamondAlertOverlay", outFile, { amount, subtitle });
+    return;
+  }
+
+  if (args.includes("--cta")) {
+    const chIdx = args.indexOf("--channel");
+    const channelName = chIdx !== -1 && args[chIdx + 1] ? args[chIdx + 1] : "Código Headshot";
+    const outIdx = args.indexOf("--out");
+    const outFile = outIdx !== -1 && args[outIdx + 1] ? args[outIdx + 1] : "cta_like_subscribe.webm";
+    renderOverlay("CTALikeSubscribe", outFile, { channelName });
     return;
   }
 
@@ -123,6 +156,17 @@ function main() {
   });
 
   const killcardPath = renderKillCardOverlay(3, "CODIGO HEADSHOT PRO", "remotion_overlay.webm");
+
+  renderOverlay("TopicBadgeOverlay", "topic_badge.webm", {
+    title: "TODO ROJO ACTIVADO",
+    badge: "TRUCO PRO FREE FIRE",
+    accentColor: "#FF2E55"
+  });
+
+  renderOverlay("DiamondAlertOverlay", "diamond_alert.webm", {
+    amount: "+5,000",
+    subtitle: "RECARGA DE DIAMANTES FREE FIRE"
+  });
 
   console.log("\n✨ All Remotion transparent overlays compiled successfully!");
 }

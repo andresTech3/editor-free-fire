@@ -223,18 +223,66 @@ MUSIC_CATALOG = [
     os.path.join(DIR_MUSIC, "NUNCA MUDA [ ULTRA SLOWED ] [BRAZILIAN PHONK].mp3"),
 ]
 
-# 14. GAMEPLAY VIDEOS (Strict genuine combat clips, excluding asesoria/capcut/whatsapp non-gameplay files)
+# 14. GAMEPLAY VIDEOS (All valid combat clips unlocked, with persistent variety history)
+HISTORY_FILE = os.path.join(ASSETS_ROOT, "recent_clips_history.json")
+
+def load_recent_clips_history() -> List[str]:
+    """Loads the list of recently used gameplay clips to guarantee cross-run variety."""
+    if os.path.exists(HISTORY_FILE):
+        try:
+            import json
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_recent_clips_history(used_files: List[Any], max_history: int = 40):
+    """Saves recently used gameplay clips into persistent history."""
+    current = load_recent_clips_history()
+    used_names = [Path(str(f)).name for f in used_files]
+    # Prepend new used files without duplicates
+    new_history = used_names + [f for f in current if f not in used_names]
+    new_history = new_history[:max_history]
+    try:
+        import json
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(new_history, f, indent=2)
+    except Exception:
+        pass
+
+def prioritize_fresh_gameplay_videos(all_clips: List[Any]) -> List[Any]:
+    """
+    Prioritizes gameplay clips so clips used least recently appear first,
+    guaranteeing maximum freshness and variety across successive generations.
+    """
+    recent = load_recent_clips_history()
+    recent_set = set(recent)
+
+    fresh = []
+    older = []
+    for c in all_clips:
+        name = Path(str(c)).name
+        if name not in recent_set:
+            fresh.append(c)
+        else:
+            older.append((recent.index(name), c))
+
+    import random
+    random.shuffle(fresh)
+    older.sort(key=lambda x: x[0], reverse=True)
+    sorted_older = [c for _, c in older]
+
+    res = fresh + sorted_older
+    return res if res else all_clips
+
 def get_gameplay_videos() -> List[str]:
     valid_exts = (".mp4", ".mov", ".m4v")
     if not os.path.exists(DIR_GAMEPLAYS):
         return []
 
-    excluded_names = {
-        "emotes.mp4", "intro.mp4", "img_1355.mp4", "img_1372.mp4", "img_1356.mp4", "img_1366.mp4"
-    }
-    for i in range(1326, 1336):
-        excluded_names.add(f"img_{i}.mov")
-        excluded_names.add(f"img_{i}.mp4")
+    # Only exclude channel intro and low-res thumbnails
+    excluded_names = {"intro.mp4", "img_1356.mp4", "img_1366.mp4"}
 
     files = []
     for f in sorted(os.listdir(DIR_GAMEPLAYS)):
@@ -244,7 +292,7 @@ def get_gameplay_videos() -> List[str]:
             p = os.path.join(DIR_GAMEPLAYS, f)
             if os.path.isfile(p):
                 files.append(p)
-    return files
+    return prioritize_fresh_gameplay_videos(files)
 
 # 15. CONTEXTUAL GREEN SCREEN MEMES (200+ clips in subfolders)
 GREEN_SCREEN_MEMES_BY_CONTEXT = {

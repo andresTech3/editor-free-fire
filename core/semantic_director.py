@@ -32,6 +32,7 @@ if sys.platform == "win32":
 
 # Local imports
 from core.asset_catalog import (
+    PROJECT_ROOT,
     DIAMONDS_CATALOG,
     PASS_AND_TOURNAMENT_CATALOG,
     TOP_GLOBAL_CATALOG,
@@ -427,10 +428,94 @@ class SemanticDirector:
             # Re-sort memes chronologically
             meme_events.sort(key=lambda x: x["time"])
 
+        # ── 3. SCAN SFX WITH ARGUMENTS TIED TO TRANSCRIPT ─────────────────────
+        sfx_events = []
+        last_sfx_t = -5.0
+        full_text = " ".join(s.get("text", "") for s in segments)
+        full_norm = normalize_text(full_text)
+
+        sfx_rules = [
+            ("vine_boom", ["truco", "secreto", "increible", "increíble", "locura", "ojo", "atencion", "mira esto", "formula", "fórmula", "nadie sabe"]),
+            ("bone_crack", ["cabeza", "headshot", "rojos", "bajamos", "muerto", "disparo"]),
+            ("punch", ["golpe", "pegas", "pum", "pecho", "tiro"]),
+            ("ding", ["diamante", "diamantes", "moneda", "monedas", "recarga", "codigo", "código", "consejo"]),
+            ("error", ["manco", "fallar", "fallé", "mentira", "no sirve", "morir", "falso"]),
+            ("dramatic", ["peligro", "cuidado", "rival", "dificil", "difícil", "imposible"]),
+            ("click", ["boton", "botón", "ajustes", "suscribete", "suscríbete", "like"]),
+            ("romance", ["baile", "emote", "amor", "toxico", "tóxico"]),
+        ]
+
+        for seg in segments:
+            for w in seg.get("words", []):
+                w_str = normalize_text(w.get("word", ""))
+                w_start = w.get("start", seg["start"])
+                if w_start < last_sfx_t + 2.8:
+                    continue
+
+                for sfx_key, keywords in sfx_rules:
+                    if any(kw in w_str for kw in keywords):
+                        sfx_file = SFX_CATALOG.get(sfx_key)
+                        if sfx_file and os.path.exists(sfx_file):
+                            sfx_events.append({
+                                "time": round(w_start, 2),
+                                "sfx_path": sfx_file,
+                                "type": sfx_key,
+                                "trigger_word": w_str
+                            })
+                            last_sfx_t = w_start
+                            break
+
+        # ── 4. SELECT REMOTION ANIMATION WITH ARGUMENTS ───────────────────────
+        overlays_dir = os.path.join(PROJECT_ROOT, "overlays")
+        remotion_anim = None
+
+        if any(k in full_norm for k in ["diamante", "diamantes", "recarga"]):
+            p = os.path.join(overlays_dir, "diamond_alert.webm")
+            if os.path.exists(p):
+                remotion_anim = {
+                    "name": "DiamondAlertOverlay",
+                    "path": p,
+                    "time": 2.2,
+                    "duration": 3.0,
+                    "reason": "Tema: Venta / Recarga de Diamantes detectado"
+                }
+        elif any(k in full_norm for k in ["sensibilidad", "sensi", "dpi", "mira", "configuracion"]):
+            p = os.path.join(overlays_dir, "hud_sensibilidad.webm")
+            if os.path.exists(p):
+                remotion_anim = {
+                    "name": "HUDSensibilidad",
+                    "path": p,
+                    "time": max(5.0, total_audio_dur - 5.5),
+                    "duration": 5.0,
+                    "reason": "Tema: Calibración de Sensibilidad / Miras / DPI"
+                }
+        elif any(k in full_norm for k in ["headshot", "rojo", "rojos", "combo", "modo diablo", "insano"]):
+            p = os.path.join(overlays_dir, "remotion_overlay.webm")
+            if os.path.exists(p):
+                remotion_anim = {
+                    "name": "KillCardOverlay",
+                    "path": p,
+                    "time": 2.0,
+                    "duration": 2.6,
+                    "reason": "Tema: Jugadas Insanas / Tiros Rojos / Headshot Combo"
+                }
+        else:
+            p = os.path.join(overlays_dir, "topic_badge.webm")
+            if os.path.exists(p):
+                remotion_anim = {
+                    "name": "TopicBadgeOverlay",
+                    "path": p,
+                    "time": 1.0,
+                    "duration": 2.0,
+                    "reason": "Tema: Truco Free Fire / Hook de Apertura"
+                }
+
         return {
             "total_duration": total_audio_dur,
             "segments": segments,
             "visual_events": visual_events,
             "meme_events": meme_events,
+            "sfx_events": sfx_events,
+            "remotion_anim": remotion_anim,
             "is_short": is_short
         }

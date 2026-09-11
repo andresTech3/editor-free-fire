@@ -47,7 +47,8 @@ from core.asset_catalog import (
     DIR_PACK_MEMES,
     DIR_GREEN_MEMES,
     DIR_SFX,
-    DIR_MUSIC
+    DIR_MUSIC,
+    save_recent_clips_history
 )
 from core.orientation_helper import (
     get_video_orientation_filter,
@@ -186,11 +187,9 @@ def collect_169_gameplay_videos(custom_dir=None):
             print(f"📦 [Recursos Personalizados 16:9] Encontrados {len(gameplay_files)} videos subidos por el usuario.")
     else:
         exclude_kw = [
-            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro",
-            "img_1355", "img_1372", "img_1356", "img_1366"
+            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "intro",
+            "img_1356", "img_1366"
         ]
-        for i in range(1326, 1336):
-            exclude_kw.append(f"img_{i}")
 
         for ext in video_exts:
             for f in target_dir.rglob(ext):
@@ -201,11 +200,9 @@ def collect_169_gameplay_videos(custom_dir=None):
 
     if not gameplay_files:
         exclude_kw = [
-            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "emote", "emotes", "intro",
-            "img_1355", "img_1372", "img_1356", "img_1366"
+            "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "intro",
+            "img_1356", "img_1366"
         ]
-        for i in range(1326, 1336):
-            exclude_kw.append(f"img_{i}")
 
         for ext in video_exts:
             for f in JUGADAS_DIR.rglob(ext):
@@ -214,7 +211,9 @@ def collect_169_gameplay_videos(custom_dir=None):
                     continue
                 gameplay_files.append(f)
 
-    return list(dict.fromkeys(gameplay_files))
+    unique_clips = list(dict.fromkeys(gameplay_files))
+    from core.asset_catalog import prioritize_fresh_gameplay_videos
+    return prioritize_fresh_gameplay_videos(unique_clips)
 
 def generate_remotion_overlays_if_needed():
     """Runs remotion_overlays.js to ensure transparent WebM overlays are generated."""
@@ -454,6 +453,18 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     for v in visual_events:
         print(f"   • Voice {v['time']:.2f}s ➔ Video output [{v['out_time']:.2f}s - {v['out_end']:.2f}s] | {v['label']} ({os.path.basename(v['asset_path'])})")
 
+    # Semantic SFX and Dynamic Remotion Animation
+    sfx_events = plan.get("sfx_events", [])
+    remotion_anim = plan.get("remotion_anim")
+
+    if remotion_anim and os.path.exists(remotion_anim.get("path", "")):
+        print(f"✨ Animación Remotion con Argumentos: {remotion_anim['name']} ({remotion_anim['reason']}) [{remotion_anim['time']:.2f}s - {remotion_anim['time']+remotion_anim['duration']:.2f}s]")
+
+    if sfx_events:
+        print(f"🔊 Efectos de Sonido con Argumentos Semánticos ({len(sfx_events)} sincronizados al ritmo de voz):")
+        for s in sfx_events:
+            print(f"   • [{s['time']:.2f}s] Palabra clave: '{s['trigger_word']}' ➔ SFX '{s['type']}' ({os.path.basename(s['sfx_path'])})")
+
     # 2. Collect 16:9 Gameplay Clips
     gameplay_files = collect_169_gameplay_videos(custom_gameplay_dir)
     if not gameplay_files:
@@ -653,6 +664,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     for b_i, seg in enumerate(broll_segments):
         print(f"   {b_i+1:02d}. [{seg['mode']}] {seg['name']} | st={seg['start']:.2f}s, dur={seg['timeline_dur']:.2f}s, speed={seg['speed']}x")
 
+    # Guardar clips seleccionados en el historial persistente para garantizar variedad total
+    save_recent_clips_history([seg["path"] for seg in broll_segments])
+
     # 6. Prepare Output Destination & Subtitles (.ass)
     target_out_dir = Path(out_dir) if (out_dir and os.path.exists(out_dir)) else DEFAULT_OUTPUT_DIR
     target_out_dir.mkdir(parents=True, exist_ok=True)
@@ -769,6 +783,27 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             "idx": m_in_idx,
             "has_audio": has_aud
         })
+
+    # Inputs: Dynamic Remotion WebM Overlay (TopicBadge, DiamondAlert, KillCard, HUDSensibilidad)
+    remotion_in_idx = None
+    if remotion_anim and os.path.exists(remotion_anim.get("path", "")):
+        rem_p = remotion_anim["path"]
+        rem_dur = remotion_anim["duration"]
+        cmd.extend(["-ss", "0", "-t", f"{rem_dur:.2f}", "-i", rem_p])
+        remotion_in_idx = input_idx
+        input_idx += 1
+
+    # Inputs: Contextual SFX with Semantic Arguments
+    sfx_input_info = []
+    for s_ev in sfx_events:
+        s_path = s_ev.get("sfx_path")
+        if s_path and os.path.exists(s_path):
+            cmd.extend(["-i", s_path])
+            sfx_input_info.append({
+                "event": s_ev,
+                "idx": input_idx
+            })
+            input_idx += 1
 
     # ── FILTER COMPLEX CONSTRUCTION ─────────────────────────────────────────
     filter_parts = []
@@ -927,11 +962,25 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         f"scale=340:190:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[cta_proc];"
     )
     filter_parts.append(
-        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=W-w-80:y=H-h-80:eof_action=pass[v_overlays];"
+        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=W-w-80:y=H-h-80:eof_action=pass[v_cta];"
     )
+    curr_v = "v_cta"
+
+    # 4b. Dynamic Remotion Overlay (TopicBadge, DiamondAlert, KillCard, HUDSensibilidad)
+    if remotion_in_idx is not None:
+        rem_out_t = map_vo_time_to_output(remotion_anim["time"])
+        rem_dur = remotion_anim["duration"]
+        filter_parts.append(
+            f"[{remotion_in_idx}:v]setpts=PTS-STARTPTS+{rem_out_t:.3f}/TB,"
+            f"scale=1920:1080:force_original_aspect_ratio=decrease,setsar=1,fps=60[rem_proc];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][rem_proc]overlay=enable='between(t,{rem_out_t:.3f},{rem_out_t+rem_dur:.3f})':x=(W-w)/2:y=(H-h)/2:eof_action=pass[v_rem];"
+        )
+        curr_v = "v_rem"
 
     # 5. Output Video Stream (Subtitles completely removed per user instruction)
-    filter_parts.append(f"[v_overlays]null[v_final];")
+    filter_parts.append(f"[{curr_v}]null[v_final];")
 
     # 6. AUDIO SPLICING & MIXING: HARD CUT VOICEOVER DURING MEMES AND INTRO
     vo_chunks = []
@@ -1026,6 +1075,17 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
                 f"[{sfx_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.6[{lbl}];"
             )
             mix_inputs.append(f"[{lbl}]")
+
+    # Contextual SFX tracks with semantic arguments
+    for s_i, s_item in enumerate(sfx_input_info):
+        s_idx = s_item["idx"]
+        s_out_t = map_vo_time_to_output(s_item["event"]["time"])
+        delay_ms = int(s_out_t * 1000)
+        lbl = f"sfx_sem_{s_i}"
+        filter_parts.append(
+            f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.45[{lbl}];"
+        )
+        mix_inputs.append(f"[{lbl}]")
 
     mix_str = "".join(mix_inputs)
     filter_parts.append(
