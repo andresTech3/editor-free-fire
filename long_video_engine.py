@@ -82,14 +82,12 @@ UPPER_RED2 = np.array([180, 255, 255])
 
 # ── EDITION VARIETY ENGINE (16:9) ─────────────────────────────────────────────
 COLOR_PALETTES_169 = {
-    "warm_vibrant":    "eq=contrast=1.15:saturation=1.30:brightness=0.02:gamma=1.0",
-    "cold_steel":      "eq=contrast=1.20:saturation=0.90:brightness=-0.02:gamma=0.95",
-    "golden_hour":     "eq=contrast=1.10:saturation=1.40:brightness=0.05:gamma=1.05",
-    "high_contrast":   "eq=contrast=1.35:saturation=1.15:brightness=-0.03:gamma=0.90",
-    "neon_punch":      "eq=contrast=1.25:saturation=1.50:brightness=0.00:gamma=1.0",
-    "noir_dramatic":   "eq=contrast=1.45:saturation=0.60:brightness=-0.05:gamma=0.85",
-    "tropical":        "eq=contrast=1.12:saturation=1.45:brightness=0.03:gamma=1.0",
-    "pro_gaming":      "eq=contrast=1.18:saturation=1.35:brightness=0.01:gamma=0.98",
+    "pro_gaming":      "eq=contrast=1.12:saturation=1.30:brightness=0.02:gamma=1.0",
+    "warm_vibrant":    "eq=contrast=1.10:saturation=1.28:brightness=0.03:gamma=1.02",
+    "golden_hour":     "eq=contrast=1.10:saturation=1.35:brightness=0.04:gamma=1.04",
+    "neon_punch":      "eq=contrast=1.15:saturation=1.40:brightness=0.02:gamma=1.0",
+    "tropical_bright": "eq=contrast=1.10:saturation=1.35:brightness=0.03:gamma=1.02",
+    "ultra_clear":     "eq=contrast=1.08:saturation=1.25:brightness=0.02:gamma=1.0",
 }
 
 
@@ -100,7 +98,7 @@ def choose_edition_strategy_169(seed: int) -> dict:
     return {
         "color_palette": palette_name,
         "color_filter":  COLOR_PALETTES_169[palette_name],
-        "transition_type": rng.choice(["hard_cut", "flash_white", "luma_fade"]),
+        "transition_type": "hard_cut",
     }
 
 
@@ -1069,6 +1067,14 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         res_ns = subprocess.run(cmd_nosubs, capture_output=True, text=True, encoding="utf-8")
         if res_ns.returncode != 0:
             print(f"❌ Secondary Render Error:\n{res_ns.stderr[-1000:]}")
+
+    # ── CLEANUP TEMPORARY TRANSCRIPTIONS & INTERMEDIATE FILES ─────────────────
+    try:
+        if os.path.exists(tmp_ass):
+            os.remove(tmp_ass)
+            print(f"🧹 Subtítulos y transcripciones temporales eliminadas ({Path(tmp_ass).name})")
+    except Exception:
+        pass
 
     if os.path.exists(final_output_path):
         size_mb = os.path.getsize(final_output_path) / (1024 * 1024)

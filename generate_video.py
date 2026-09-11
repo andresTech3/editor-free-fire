@@ -150,11 +150,18 @@ def main():
     t_proof = snap_to_nearest_beat(max(t_hook + 4.0, (total_dur - 8.0) * 0.55), beat_times)
     t_state4 = max(t_proof + 3.0, total_dur - 8.0)
 
+    transcript_check = vo_data.get("text", "").lower()
+    is_sens_check = any(k in transcript_check for k in [
+        "sensibilidad", "sensi", "dpi", "mira", "configuracion", "configuración",
+        "ajustes", "boton de disparo", "botón de disparo", "calibrar"
+    ])
+    state4_lbl = "Dynamic Spec Card HUD" if is_sens_check else "Action Climax & Call-To-Action"
+
     print(f"\n⏱️ Dynamic State Machine Segmentation:")
     print(f"   • State 1 (Kinetic 3D Hook):          0.00s  ➔ {t_hook:.2f}s  ({t_hook:.2f}s)")
     print(f"   • State 2 (Educational & Memes):      {t_hook:.2f}s  ➔ {t_proof:.2f}s  ({t_proof - t_hook:.2f}s)")
     print(f"   • State 3 (Training Proof Montage):   {t_proof:.2f}s  ➔ {t_state4:.2f}s  ({t_state4 - t_proof:.2f}s)")
-    print(f"   • State 4 (Dynamic Spec Card HUD):    {t_state4:.2f}s ➔ {total_dur:.2f}s  ({total_dur - t_state4:.2f}s)")
+    print(f"   • State 4 ({state4_lbl}): {t_state4:.2f}s ➔ {total_dur:.2f}s  ({total_dur - t_state4:.2f}s)")
 
     # ── STEP 5: SAMPLE ASSETS FOR EACH STATE ──────────────────────────────────
     # State 1: 3 PVP planes
@@ -247,8 +254,91 @@ def main():
     for me in meme_events:
         print(f"   • [{me['start']:.2f}s - {me['start']+me['dur']:.2f}s] {Path(me['path']).name}")
 
-    # State 4 Spec Card
-    spec_card_img = render_dynamic_spec_card_hud(out_w, out_h, duration=total_dur - t_state4)
+    # ── STEP 5B: CONTEXTUAL TOPIC & ASSET DETECTION FROM WHISPER ──────────────
+    transcript_norm = vo_data.get("text", "").lower()
+    print(f"\n📝 Transcripción del audio:\n   \"{vo_data.get('text', '').strip()}\"")
+
+    is_sens_topic = any(k in transcript_norm for k in [
+        "sensibilidad", "sensi", "dpi", "mira", "configuracion", "configuración",
+        "ajustes", "boton de disparo", "botón de disparo", "calibrar"
+    ])
+    if is_sens_topic:
+        print("🎯 Contexto detectado: CONFIGURACIÓN / SENSIBILIDAD -> Se habilitará HUD de sensibilidad.")
+    else:
+        print("🎯 Contexto detectado: JUGADAS / ACCIÓN -> HUD de sensibilidad OMITIDO (no relevante para este audio).")
+
+    # Detect visual assets matching spoken words from recurso_dir / Imagenes
+    visual_events = []
+    img_dir = recurso_dir / "Imagenes"
+    if img_dir.exists():
+        # Diamonds / Recargas
+        if any(k in transcript_norm for k in ["diamante", "diamantes", "recarga", "recargas", "pase"]):
+            diam_img = img_dir / "Diamantes.PNG"
+            if diam_img.exists():
+                t_word = next((w["start"] for w in vo_data.get("words", []) if any(k in w["word"] for k in ["diamante", "recarga", "pase"])), t_hook + 2.0)
+                visual_events.append({
+                    "path": str(diam_img),
+                    "start": max(t_hook, t_word),
+                    "dur": 2.5,
+                    "label": "Diamantes"
+                })
+        # Book / Web Guide
+        if any(k in transcript_norm for k in ["codigo", "código", "headshot", "libro", "pagina", "página", "web"]):
+            web_img = img_dir / "codigoheadshot.png"
+            if web_img.exists():
+                t_word = next((w["start"] for w in vo_data.get("words", []) if any(k in w["word"] for k in ["codigo", "headshot", "web", "libro"])), t_hook + 5.0)
+                visual_events.append({
+                    "path": str(web_img),
+                    "start": max(t_hook + 1.0, t_word),
+                    "dur": 2.5,
+                    "label": "Web Código Headshot"
+                })
+        # Weapons / Evolutivas
+        if any(k in transcript_norm for k in ["arma", "armas", "evolutiva", "ak47", "mp40", "m1014", "escopeta"]):
+            armas_dir = img_dir / "armas"
+            if armas_dir.exists():
+                w_files = list(armas_dir.glob("*.png"))
+                if w_files:
+                    t_word = next((w["start"] for w in vo_data.get("words", []) if any(k in w["word"] for k in ["arma", "evolutiva", "ak47", "mp40"])), t_hook + 3.5)
+                    visual_events.append({
+                        "path": str(w_files[0]),
+                        "start": max(t_hook, t_word),
+                        "dur": 2.5,
+                        "label": "Arma Evolutiva"
+                    })
+        # Official Avatar
+        if any(k in transcript_norm for k in ["avatar", "cuenta", "cris", "creador", "canal"]):
+            av_img = img_dir / "avatar.png"
+            if av_img.exists():
+                t_word = next((w["start"] for w in vo_data.get("words", []) if any(k in w["word"] for k in ["avatar", "cuenta", "cris"])), t_hook + 1.5)
+                visual_events.append({
+                    "path": str(av_img),
+                    "start": max(t_hook, t_word),
+                    "dur": 2.5,
+                    "label": "Avatar Oficial"
+                })
+
+    if visual_events:
+        print(f"📌 Scheduled {len(visual_events)} Contextual Visual Overlays strictly matching narration topic:")
+        for ve in visual_events:
+            print(f"   • [{ve['start']:.2f}s - {ve['start']+ve['dur']:.2f}s] {ve['label']} ({Path(ve['path']).name})")
+
+    # State 4 Setup
+    spec_card_img = None
+    cta_badge_path = None
+    if is_sens_topic:
+        spec_card_img = render_dynamic_spec_card_hud(out_w, out_h, duration=total_dur - t_state4)
+    else:
+        # Search for CTA Like & Subscribe badge
+        cta_cands = [
+            recurso_dir / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4",
+            recurso_dir / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACION DE LIKE Y SUSCRIBETE 1.mp4",
+            assets_path / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4",
+        ]
+        for c_cand in cta_cands:
+            if c_cand.exists():
+                cta_badge_path = str(c_cand)
+                break
 
     # ── STEP 6: COMPILE FFMPEG COMMAND ────────────────────────────────────────
     out_dir_path = Path(args.outdir).resolve()
@@ -292,10 +382,24 @@ def main():
         meme_indices.append((input_idx, me))
         input_idx += 1
 
-    # Spec card input
-    spec_in_idx = input_idx
-    cmd.extend(["-loop", "1", "-t", f"{total_dur - t_state4:.2f}", "-i", spec_card_img])
-    input_idx += 1
+    # Contextual Visual Event inputs
+    vis_indices = []
+    for ve in visual_events:
+        cmd.extend(["-loop", "1", "-t", f"{ve['dur']:.2f}", "-i", ve["path"]])
+        vis_indices.append((input_idx, ve))
+        input_idx += 1
+
+    # State 4 input: Spec card (if sensitivity topic) or CTA badge
+    spec_in_idx = None
+    cta_in_idx = None
+    if is_sens_topic and spec_card_img:
+        spec_in_idx = input_idx
+        cmd.extend(["-loop", "1", "-t", f"{total_dur - t_state4:.2f}", "-i", spec_card_img])
+        input_idx += 1
+    elif cta_badge_path:
+        cta_in_idx = input_idx
+        cmd.extend(["-ss", "0", "-t", f"{min(4.0, total_dur - t_state4):.2f}", "-i", cta_badge_path])
+        input_idx += 1
 
     # Build Filter Complex
     filter_parts = []
@@ -305,6 +409,8 @@ def main():
     ph = int(out_h * 0.65)
     cw = int(out_w * 0.65)
     ch = int(out_h * 0.75)
+
+    color_filter_clean = "eq=contrast=1.12:saturation=1.28:brightness=0.02:gamma=1.0"
 
     if len(s1_indices) >= 3:
         p_l, p_c, p_r = s1_indices[0], s1_indices[1], s1_indices[2]
@@ -337,16 +443,16 @@ def main():
         filter_parts.append(
             f"[h_3d]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,"
             f"scale=eval=frame:w='iw*(1.0+0.35*pow(t/{t_hook:.2f},2))':h='ih*(1.0+0.35*pow(t/{t_hook:.2f},2))',"
-            f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2,eq=contrast=1.15:saturation=1.25,setsar=1,fps=60[v_state1];"
+            f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2,{color_filter_clean},setsar=1,fps=60[v_state1];"
         )
     else:
         filter_parts.append(
             f"[{s1_indices[0]}:v]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,"
             f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
-            f"eq=contrast=1.15:saturation=1.25,setsar=1,fps=60[v_state1];"
+            f"{color_filter_clean},setsar=1,fps=60[v_state1];"
         )
 
-    # 2. State 2 & State 3 Clips (Fluid Gameplay, Uniform 60 FPS)
+    # 2. State 2 & State 3 Clips (Fluid Gameplay, Uniform 60 FPS, Luminous Color Grade)
     concat_list = ["[v_state1]"]
 
     for i_num, (in_i, s2) in enumerate(s2_indices):
@@ -355,7 +461,7 @@ def main():
         rot = get_video_orientation_filter(s2["path"])
         filter_parts.append(
             f"[{in_i}:v]trim=duration={dur_s2:.2f},setpts=PTS-STARTPTS,{rot}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
-            f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,eq=contrast=1.15:saturation=1.25,setsar=1,fps=60[{lbl}];"
+            f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,{color_filter_clean},setsar=1,fps=60[{lbl}];"
         )
         concat_list.append(f"[{lbl}]")
 
@@ -365,7 +471,7 @@ def main():
         rot = get_video_orientation_filter(s3["path"])
         filter_parts.append(
             f"[{in_i}:v]trim=duration={dur_s3:.2f},setpts=PTS-STARTPTS,{rot}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
-            f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,eq=contrast=1.15:saturation=1.25,setsar=1,fps=60[{lbl}];"
+            f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,{color_filter_clean},setsar=1,fps=60[{lbl}];"
         )
         concat_list.append(f"[{lbl}]")
 
@@ -374,7 +480,21 @@ def main():
 
     curr_v = "v_base"
 
-    # 3. Overlay Silent Green-Screen Memes (Upper area, no sound)
+    # 3. Overlay Contextual Visual Events (Diamonds, Weapons, Web Guide, Avatar)
+    for v_i, (v_in, ve) in enumerate(vis_indices):
+        next_v = f"v_vis_{v_i}"
+        v_st = ve["start"]
+        v_dur = ve["dur"]
+        filter_parts.append(
+            f"[{v_in}:v]setpts=PTS-STARTPTS+{v_st:.2f}/TB,"
+            f"scale=650:380:force_original_aspect_ratio=decrease,pad=iw+6:ih+6:3:3:color=white@0.35,setsar=1,fps=60[vis_card_{v_i}];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][vis_card_{v_i}]overlay=enable='between(t,{v_st:.2f},{v_st+v_dur:.2f})':x=(W-w)/2:y=180:eof_action=pass[{next_v}];"
+        )
+        curr_v = next_v
+
+    # 4. Overlay Silent Green-Screen Memes (Upper area, rhythmically synced to cadence)
     for m_i, (m_in, me) in enumerate(meme_indices):
         next_v = f"v_meme_{m_i}"
         m_t = me["start"]
@@ -391,19 +511,35 @@ def main():
         )
         curr_v = next_v
 
-    # 4. State 4 Spec Card HUD with Overshoot Slide-In
-    # Y(t) = 540 + 600*(1-u)^3 - 30*sin(pi*u), u = (t - t_state4)/0.45
-    card_target_y = int(out_h * 0.62)
-    # Clamp u between 0 and 1
-    u_expr = f"min(1.0,max(0.0,(t-{t_state4:.2f})/0.45))"
-    y_expr = f"{card_target_y}+600*pow(1.0-{u_expr},3)-30*sin(3.14159*{u_expr})"
+    # 5. State 4 Overlay: Sensitivity Spec Card OR Action Climax CTA Badge
+    if is_sens_topic and spec_in_idx is not None:
+        card_target_y = int(out_h * 0.62)
+        u_expr = f"min(1.0,max(0.0,(t-{t_state4:.2f})/0.45))"
+        y_expr = f"{card_target_y}+600*pow(1.0-{u_expr},3)-30*sin(3.14159*{u_expr})"
 
+        filter_parts.append(
+            f"[{spec_in_idx}:v]setpts=PTS-STARTPTS+{t_state4:.2f}/TB,"
+            f"scale={out_w-60}:-1:force_original_aspect_ratio=decrease,setsar=1,fps=60[spec_scaled];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][spec_scaled]overlay=enable='between(t,{t_state4:.2f},{total_dur:.2f})':x=(W-w)/2:y='{y_expr}':eof_action=pass[v_prefinal];"
+        )
+        curr_v = "v_prefinal"
+    elif cta_in_idx is not None:
+        cta_y = int(out_h * 0.78)
+        filter_parts.append(
+            f"[{cta_in_idx}:v]setpts=PTS-STARTPTS+{t_state4:.2f}/TB,"
+            f"scale=450:260:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_scaled];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][cta_scaled]overlay=enable='between(t,{t_state4:.2f},{min(t_state4+4.0, total_dur):.2f})':x=(W-w)/2:y={cta_y}:eof_action=pass[v_prefinal];"
+        )
+        curr_v = "v_prefinal"
+
+    # Smooth finish (no freezing, no white flash, subtle 0.5s fade out to black at the end)
+    fade_start = max(0.0, total_dur - 0.5)
     filter_parts.append(
-        f"[{spec_in_idx}:v]setpts=PTS-STARTPTS+{t_state4:.2f}/TB,"
-        f"scale={out_w-60}:-1:force_original_aspect_ratio=decrease,setsar=1,fps=60[spec_scaled];"
-    )
-    filter_parts.append(
-        f"[{curr_v}][spec_scaled]overlay=enable='between(t,{t_state4:.2f},{total_dur:.2f})':x=(W-w)/2:y='{y_expr}':eof_action=pass[v_final];"
+        f"[{curr_v}]fade=t=out:st={fade_start:.2f}:d=0.5:color=black[v_final];"
     )
 
     filter_complex = "\n".join(filter_parts)
@@ -427,7 +563,22 @@ def main():
     ])
 
     print(f"\n🚀 Rendering with FFmpeg: {out_file_path}")
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    finally:
+        # ── CLEANUP TEMPORARY FILES ───────────────────────────────────────────
+        if tmp_audio_out and os.path.exists(tmp_audio_out):
+            try:
+                os.remove(tmp_audio_out)
+                print(f"🧹 Audio temporal ducking eliminado ({Path(tmp_audio_out).name})")
+            except Exception:
+                pass
+        if spec_card_img and os.path.exists(spec_card_img):
+            try:
+                os.remove(spec_card_img)
+                print(f"🧹 Spec card temporal eliminada ({Path(spec_card_img).name})")
+            except Exception:
+                pass
 
     print("\n" + "═"*75)
     print("🎉 DYNAMIC SYNTHESIS VIDEO COMPLETED SUCCESSFULLY!")

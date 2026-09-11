@@ -638,6 +638,12 @@ class FreeFireEditorApp(tk.Tk):
                 self.after(0, lambda m=err_msg: self._on_error(m))
         except Exception as e:
             self.after(0, lambda: self._on_error(str(e)))
+        finally:
+            if audio_file and "extracted_gameplay_voice" in str(audio_file) and os.path.exists(audio_file):
+                try:
+                    os.remove(audio_file)
+                except Exception:
+                    pass
 
     def _on_success(self):
         self.btn_generate.config(state="normal", bg=RED,

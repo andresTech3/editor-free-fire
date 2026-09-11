@@ -97,40 +97,33 @@ LOWER_RED2 = np.array([170, 150, 150])
 UPPER_RED2 = np.array([180, 255, 255])
 
 # ── EDITION VARIETY ENGINE ───────────────────────────────────────────────────
-# 8 different color grade palettes for b-roll clips
+# 6 luminous and vibrant gaming color grade palettes for b-roll clips (No dark crushing, no blinding white)
 COLOR_PALETTES = {
-    "warm_vibrant":    "eq=contrast=1.15:saturation=1.30:brightness=0.02:gamma=1.0",
-    "cold_steel":      "eq=contrast=1.20:saturation=0.90:brightness=-0.02:gamma=0.95,hue=h=190:s=1",
-    "golden_hour":     "eq=contrast=1.10:saturation=1.40:brightness=0.05:gamma=1.05,curves=r='0/0 0.5/0.6 1/1'",
-    "high_contrast":   "eq=contrast=1.35:saturation=1.15:brightness=-0.03:gamma=0.90",
-    "neon_punch":      "eq=contrast=1.25:saturation=1.50:brightness=0.00:gamma=1.0",
-    "noir_dramatic":   "eq=contrast=1.45:saturation=0.60:brightness=-0.05:gamma=0.85",
-    "tropical":        "eq=contrast=1.12:saturation=1.45:brightness=0.03:gamma=1.0,hue=h=10:s=1",
-    "pro_gaming":      "eq=contrast=1.18:saturation=1.35:brightness=0.01:gamma=0.98",
+    "pro_gaming":      "eq=contrast=1.12:saturation=1.30:brightness=0.02:gamma=1.0",
+    "warm_vibrant":    "eq=contrast=1.10:saturation=1.28:brightness=0.03:gamma=1.02",
+    "golden_hour":     "eq=contrast=1.10:saturation=1.35:brightness=0.04:gamma=1.04",
+    "neon_punch":      "eq=contrast=1.15:saturation=1.40:brightness=0.02:gamma=1.0",
+    "tropical_bright": "eq=contrast=1.10:saturation=1.35:brightness=0.03:gamma=1.02",
+    "ultra_clear":     "eq=contrast=1.08:saturation=1.25:brightness=0.02:gamma=1.0",
 }
 
-# Exit strategies for the end of the video (No freezing — continuous fluid gameplay)
+# Exit strategies for the end of the video (No freezing, continuous fluid gameplay, no blinding flashes)
 EXIT_STRATEGIES = [
-    "cta_normal",       # standard CTA badge overlay with smooth finish
-    "flash_cut",        # energetic white flash on final cut
+    "cta_normal",       # standard CTA badge overlay with smooth natural finish
 ]
 
-# Transition types between b-roll clips
+# Transition types between b-roll clips (Direct seamless cuts, no blinding white or black fades)
 TRANSITION_TYPES = [
-    "hard_cut",         # direct cut (current behavior)
-    "flash_white",      # 2-frame white flash between clips
-    "luma_fade",        # 4-frame quick luma fade
+    "hard_cut",         # direct cut aligned to rhythm
 ]
 
 # Meme vertical positions (y offset from top for meme overlay)
 MEME_POSITIONS = [160, 220, 280, 340]
 
 
-# Hook entrance strategies for opening seconds
+# Hook entrance strategies for opening seconds (Direct energetic action, no black/white flashes)
 HOOK_STRATEGIES = [
     "headshot_punch",   # direct cut to headshot action
-    "fade_impact",      # 0.35s cinematic fade from black
-    "flash_snap",       # 0.10s white flash into first cut
     "frenetic_instant", # instant high-speed gameplay
 ]
 
@@ -854,20 +847,8 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         spd = seg.get("speed", 1.0)
         pts_filter = f"setpts=(PTS-STARTPTS)/{spd:.2f}" if spd != 1.0 else "setpts=PTS-STARTPTS"
 
-        # Transition prefix: smooth clean fade-in without tpad PTS desync
+        # Direct clean rhythmic cuts without blinding white or black fades
         transition_prefix = ""
-        if b_i > 0:
-            if _transition == "flash_white":
-                transition_prefix = "fade=t=in:st=0:d=0.05:color=white,"
-            elif _transition == "luma_fade":
-                transition_prefix = "fade=t=in:st=0:d=0.07:color=black,"
-        else:
-            # ── Hook entrance strategy for the very first clip ──
-            _hook_strat = edition.get("hook_strategy", "headshot_punch")
-            if _hook_strat == "fade_impact":
-                transition_prefix = "fade=t=in:st=0:d=0.35:color=black,"
-            elif _hook_strat == "flash_snap":
-                transition_prefix = "fade=t=in:st=0:d=0.10:color=white,"
 
         # Color grade from selected edition palette
         color_filter = f",{_color_filt}"
@@ -1010,22 +991,12 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         )
         curr_v = "v_cta"
 
-    # 5. Apply Exit Strategy to final video stream (Continuous moving action, NEVER freezing)
-    fade_start = max(0.0, total_output_dur - 0.8)
-    if _exit == "flash_cut":
-        # White flash at 0.4s before end, then clean fade to black
-        flash_t = max(0.0, total_output_dur - 0.4)
-        filter_parts.append(
-            f"[{curr_v}]trim=0:{total_output_dur:.3f},setpts=PTS-STARTPTS,"
-            f"fade=t=in:st={flash_t:.3f}:d=0.08:color=white,"
-            f"fade=t=out:st={max(0.0, flash_t+0.08):.3f}:d=0.32:color=black[v_final];"
-        )
-    else:
-        # Smooth continuous finish with clean fade out in the final 0.8s
-        filter_parts.append(
-            f"[{curr_v}]trim=0:{total_output_dur:.3f},setpts=PTS-STARTPTS,"
-            f"fade=t=out:st={fade_start:.3f}:d=0.8:color=black[v_final];"
-        )
+    # 5. Apply Exit Strategy to final video stream (Continuous moving action, smooth clean finish, no white flash)
+    fade_start = max(0.0, total_output_dur - 0.6)
+    filter_parts.append(
+        f"[{curr_v}]trim=0:{total_output_dur:.3f},setpts=PTS-STARTPTS,"
+        f"fade=t=out:st={fade_start:.3f}:d=0.6:color=black[v_final];"
+    )
 
 
 
@@ -1095,6 +1066,14 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         if res_ns.returncode != 0:
             print(f"❌ Fallback Render Error:\n{res_ns.stderr[-1000:]}")
             sys.exit(1)
+
+    # ── CLEANUP TEMPORARY TRANSCRIPTIONS & INTERMEDIATE FILES ─────────────────
+    try:
+        if os.path.exists(tmp_ass):
+            os.remove(tmp_ass)
+            print(f"🧹 Subtítulos y transcripciones temporales eliminadas ({Path(tmp_ass).name})")
+    except Exception:
+        pass
 
     print("\n" + "═"*75)
     print(f"🎉 MASTER 9:16 VERTICAL SHORT RENDERED SUCCESSFULLY!")
