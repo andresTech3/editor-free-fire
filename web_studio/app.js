@@ -221,18 +221,66 @@ document.addEventListener('DOMContentLoaded', () => {
     resourcesLoadedInfo.style.display = 'block';
   }
 
-  // 4. Format Selection
-  lblFormatShort.addEventListener('click', () => {
-    lblFormatShort.classList.add('active');
-    lblFormatLong.classList.remove('active');
-    lblFormatShort.querySelector('input').checked = true;
-  });
+  // 4. Format Selection Logic (Bidirectional sync between Top Selector & Step 3)
+  const topBtn916 = document.getElementById('topBtn916');
+  const topBtn169 = document.getElementById('topBtn169');
+  const currentFormatText = document.getElementById('currentFormatText');
+  const btnGenerateText = document.getElementById('btnGenerateText');
 
-  lblFormatLong.addEventListener('click', () => {
-    lblFormatLong.classList.add('active');
-    lblFormatShort.classList.remove('active');
-    lblFormatLong.querySelector('input').checked = true;
-  });
+  function setFormat(format) {
+    const is169 = format === '16:9';
+
+    // Step 3 Cards
+    if (lblFormatShort && lblFormatLong) {
+      if (is169) {
+        lblFormatLong.classList.add('active');
+        lblFormatShort.classList.remove('active');
+        const r = lblFormatLong.querySelector('input');
+        if (r) r.checked = true;
+      } else {
+        lblFormatShort.classList.add('active');
+        lblFormatLong.classList.remove('active');
+        const r = lblFormatShort.querySelector('input');
+        if (r) r.checked = true;
+      }
+    }
+
+    // Top buttons
+    if (topBtn916 && topBtn169) {
+      if (is169) {
+        topBtn169.classList.add('active');
+        topBtn916.classList.remove('active');
+      } else {
+        topBtn916.classList.add('active');
+        topBtn169.classList.remove('active');
+      }
+    }
+
+    // Header badge
+    if (currentFormatText) {
+      currentFormatText.textContent = is169
+        ? '16:9 Horizontal (YouTube Video Largo)'
+        : '9:16 Vertical (Shorts / TikTok / Reels)';
+    }
+
+    // Big Action Button Text
+    if (btnGenerateText) {
+      btnGenerateText.textContent = is169
+        ? 'CREAR VIDEO LARGO (16:9 YOUTUBE)'
+        : 'CREAR SHORTS VIRAL (9:16 VERTICAL)';
+    }
+
+    localStorage.setItem('FREEFIRE_ASPECT_RATIO', format);
+  }
+
+  topBtn916?.addEventListener('click', () => setFormat('9:16'));
+  topBtn169?.addEventListener('click', () => setFormat('16:9'));
+  lblFormatShort?.addEventListener('click', () => setFormat('9:16'));
+  lblFormatLong?.addEventListener('click', () => setFormat('16:9'));
+
+  // Initialize with saved or default format
+  const savedFormat = localStorage.getItem('FREEFIRE_ASPECT_RATIO') || '9:16';
+  setFormat(savedFormat);
 
   // 5. Generate Button Logic
   btnGenerate.addEventListener('click', async () => {
@@ -314,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
       addLogLine(`[OK] Subida completada: ${uploadData.audio_name}`);
 
       // Step B: Request Generation
-      const selectedRatio = document.querySelector('input[name="aspectRatio"]:checked')?.value || '9:16';
+      const selectedRatio = document.querySelector('input[name="aspectRatio"]:checked')?.value || localStorage.getItem('FREEFIRE_ASPECT_RATIO') || '9:16';
       const speedVal = parseFloat(speedSelect.value) || 1.5;
       const hookVal = hookSelect.value || 'auto';
 

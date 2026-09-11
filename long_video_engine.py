@@ -80,6 +80,30 @@ UPPER_RED1 = np.array([10, 255, 255])
 LOWER_RED2 = np.array([170, 150, 150])
 UPPER_RED2 = np.array([180, 255, 255])
 
+# ── EDITION VARIETY ENGINE (16:9) ─────────────────────────────────────────────
+COLOR_PALETTES_169 = {
+    "warm_vibrant":    "eq=contrast=1.15:saturation=1.30:brightness=0.02:gamma=1.0",
+    "cold_steel":      "eq=contrast=1.20:saturation=0.90:brightness=-0.02:gamma=0.95",
+    "golden_hour":     "eq=contrast=1.10:saturation=1.40:brightness=0.05:gamma=1.05",
+    "high_contrast":   "eq=contrast=1.35:saturation=1.15:brightness=-0.03:gamma=0.90",
+    "neon_punch":      "eq=contrast=1.25:saturation=1.50:brightness=0.00:gamma=1.0",
+    "noir_dramatic":   "eq=contrast=1.45:saturation=0.60:brightness=-0.05:gamma=0.85",
+    "tropical":        "eq=contrast=1.12:saturation=1.45:brightness=0.03:gamma=1.0",
+    "pro_gaming":      "eq=contrast=1.18:saturation=1.35:brightness=0.01:gamma=0.98",
+}
+
+
+def choose_edition_strategy_169(seed: int) -> dict:
+    """Picks a unique combination of editing choices for the 16:9 render."""
+    rng = random.Random(seed)
+    palette_name = rng.choice(list(COLOR_PALETTES_169.keys()))
+    return {
+        "color_palette": palette_name,
+        "color_filter":  COLOR_PALETTES_169[palette_name],
+        "transition_type": rng.choice(["hard_cut", "flash_white", "luma_fade"]),
+    }
+
+
 def file_has_audio(file_path: str) -> bool:
     """Checks if a media file has an audio stream."""
     try:
@@ -467,10 +491,19 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             pass
 
     # 5. Build Dynamic Rhythmic B-Roll Timeline (Alternating Frenetic & Slow Cuts)
-    # User request: "quiero que cada video sea diferente, utilizar otros clips u otras partes del mismo clip,
-    # colocar partes frenéticas rápido y después lentas"
+    # ── ENTROPY SEED: changes on every execution for maximum clip variety ──
+    import time as _time
+    _entropy_seed = int(_time.time() * 1000) % (2**31)
+    random.seed(_entropy_seed)
+
+    edition_169 = choose_edition_strategy_169(_entropy_seed)
+    print(f"🎨 Edition Strategy 16:9 #{_entropy_seed % 9999}:")
+    print(f"   🎨 Color Palette : {edition_169['color_palette']}")
+    print(f"   ⚡ Transitions   : {edition_169['transition_type']}")
+
     shuffled_gameplays = gameplay_files.copy()
     random.shuffle(shuffled_gameplays)
+    _start_offset = _entropy_seed % len(shuffled_gameplays)
 
     # Rhythmic alternation cycle: Frenetic (fast cuts, 1.25x-1.35x speed) -> Slow (steady cuts, 1.0x speed) -> Medium
     rhythm_cycle = ['frenetic', 'frenetic', 'slow', 'frenetic', 'medium', 'slow', 'frenetic', 'frenetic', 'slow']
@@ -483,7 +516,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     if has_intro:
         current_hook_dur = 0.0
         while current_hook_dur < hook_duration - 0.05:
-            gfile = shuffled_gameplays[idx % len(shuffled_gameplays)]
+            gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
             gpath = str(gfile)
             idx += 1
 
@@ -546,7 +579,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     target_post_broll = total_output_dur - hook_duration - (intro_dur if has_intro else 0.0) + 5.0
 
     while current_post_broll < target_post_broll:
-        gfile = shuffled_gameplays[idx % len(shuffled_gameplays)]
+        gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
         gpath = str(gfile)
         idx += 1
 
@@ -637,7 +670,8 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     if not bgm_track and MUSICA_DIR.exists():
         bgms = list(MUSICA_DIR.glob("*.mp3")) + list(MUSICA_DIR.glob("*.wav"))
         if bgms:
-            bgm_track = str(bgms[0])
+            bgm_track = str(random.choice(bgms))
+            print(f"   🎵 BGM Track 16:9: {Path(bgm_track).name}")
 
     sfx_whoosh = PROJECT_ROOT / "assets" / "sfx" / "whoosh.wav"
     if not sfx_whoosh.exists():
@@ -761,12 +795,12 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         elif seg["is_headshot"]:
             filter_parts.append(
                 f"[{in_i}:v]{pts_filter},{rot_filter}"
-                f"scale=2208:1242:force_original_aspect_ratio=increase,crop=1920:1080,eq=contrast=1.18:saturation=1.35:brightness=0.02,setsar=1,fps=60[{lbl}];"
+                f"scale=2208:1242:force_original_aspect_ratio=increase,crop=1920:1080,{edition_169['color_filter']},setsar=1,fps=60[{lbl}];"
             )
         else:
             filter_parts.append(
                 f"[{in_i}:v]{pts_filter},{rot_filter}"
-                f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,eq=contrast=1.18:saturation=1.35:brightness=0.02,setsar=1,fps=60[{lbl}];"
+                f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,{edition_169['color_filter']},setsar=1,fps=60[{lbl}];"
             )
         v_concat_labels.append(f"[{lbl}]")
 

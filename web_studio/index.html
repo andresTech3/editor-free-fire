@@ -38,6 +38,38 @@
       </div>
     </header>
 
+    <!-- SELECTOR DE FORMATO PROMINENTE (9:16 vs 16:9) -->
+    <section class="card format-selector-card" id="topFormatCard">
+      <div class="format-selector-header">
+        <div class="format-header-info">
+          <span class="badge-pulsing">CONFIGURACIÓN DE FORMATO</span>
+          <h2 class="format-main-title">📐 Elige el Formato de Salida</h2>
+        </div>
+        <div class="current-format-badge" id="currentFormatBadge">
+          <span class="badge-dot"></span>
+          <span id="currentFormatText">9:16 Vertical (Shorts / TikTok)</span>
+        </div>
+      </div>
+      <div class="top-format-buttons">
+        <button type="button" class="top-fmt-btn active" id="topBtn916" data-format="9:16">
+          <span class="top-fmt-icon">📱</span>
+          <div class="top-fmt-text">
+            <strong>9:16 Vertical (Shorts / TikTok / Reels)</strong>
+            <small>Pantalla completa vertical, personajes centrados, subtítulos virales</small>
+          </div>
+          <span class="top-fmt-check">✓ ACTIVO</span>
+        </button>
+        <button type="button" class="top-fmt-btn" id="topBtn169" data-format="16:9">
+          <span class="top-fmt-icon">🖥️</span>
+          <div class="top-fmt-text">
+            <strong>16:9 Horizontal (YouTube Video Largo)</strong>
+            <small>Widescreen 1080p, Intro oficial completa, música de fondo con ducking</small>
+          </div>
+          <span class="top-fmt-check">✓ ACTIVO</span>
+        </button>
+      </div>
+    </section>
+
     <!-- STEP 1: AUDIO DE LOCUCIÓN -->
     <section class="card step-card" id="stepAudioCard">
       <div class="card-header">
@@ -217,7 +249,7 @@
       <button type="button" class="btn-generate-main" id="btnGenerate">
         <span class="btn-glow"></span>
         <span class="btn-icon">🚀</span>
-        <span class="btn-text">CREAR VIDEO PROFESIONAL</span>
+        <span class="btn-text" id="btnGenerateText">CREAR VIDEO PROFESIONAL (9:16 SHORTS)</span>
       </button>
     </div>
 

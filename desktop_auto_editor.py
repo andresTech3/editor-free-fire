@@ -96,6 +96,71 @@ UPPER_RED1 = np.array([10, 255, 255])
 LOWER_RED2 = np.array([170, 150, 150])
 UPPER_RED2 = np.array([180, 255, 255])
 
+# ── EDITION VARIETY ENGINE ───────────────────────────────────────────────────
+# 8 different color grade palettes for b-roll clips
+COLOR_PALETTES = {
+    "warm_vibrant":    "eq=contrast=1.15:saturation=1.30:brightness=0.02:gamma=1.0",
+    "cold_steel":      "eq=contrast=1.20:saturation=0.90:brightness=-0.02:gamma=0.95,hue=h=190:s=1",
+    "golden_hour":     "eq=contrast=1.10:saturation=1.40:brightness=0.05:gamma=1.05,curves=r='0/0 0.5/0.6 1/1'",
+    "high_contrast":   "eq=contrast=1.35:saturation=1.15:brightness=-0.03:gamma=0.90",
+    "neon_punch":      "eq=contrast=1.25:saturation=1.50:brightness=0.00:gamma=1.0",
+    "noir_dramatic":   "eq=contrast=1.45:saturation=0.60:brightness=-0.05:gamma=0.85",
+    "tropical":        "eq=contrast=1.12:saturation=1.45:brightness=0.03:gamma=1.0,hue=h=10:s=1",
+    "pro_gaming":      "eq=contrast=1.18:saturation=1.35:brightness=0.01:gamma=0.98",
+}
+
+# Exit strategies for the end of the video (No freezing — continuous fluid gameplay)
+EXIT_STRATEGIES = [
+    "cta_normal",       # standard CTA badge overlay with smooth finish
+    "flash_cut",        # energetic white flash on final cut
+]
+
+# Transition types between b-roll clips
+TRANSITION_TYPES = [
+    "hard_cut",         # direct cut (current behavior)
+    "flash_white",      # 2-frame white flash between clips
+    "luma_fade",        # 4-frame quick luma fade
+]
+
+# Meme vertical positions (y offset from top for meme overlay)
+MEME_POSITIONS = [160, 220, 280, 340]
+
+
+# Hook entrance strategies for opening seconds
+HOOK_STRATEGIES = [
+    "headshot_punch",   # direct cut to headshot action
+    "fade_impact",      # 0.35s cinematic fade from black
+    "flash_snap",       # 0.10s white flash into first cut
+    "frenetic_instant", # instant high-speed gameplay
+]
+
+# 5 different subtitle color themes for ASS subtitles
+SUBTITLE_STYLES = [
+    {"name": "viral_yellow", "primary": "&H0000FFFF&", "outline": "&H00000000&", "tag": "{\\b1\\c&H0000FFFF&}"},
+    {"name": "electric_cyan", "primary": "&H00FFFF00&", "outline": "&H00000000&", "tag": "{\\b1\\c&H00FFFF00&}"},
+    {"name": "fire_orange", "primary": "&H000080FF&", "outline": "&H00000000&", "tag": "{\\b1\\c&H000080FF&}"},
+    {"name": "neon_green", "primary": "&H0000FF00&", "outline": "&H00000000&", "tag": "{\\b1\\c&H0000FF00&}"},
+    {"name": "pure_white", "primary": "&H00FFFFFF&", "outline": "&H000000FF&", "tag": "{\\b1\\c&H00FFFFFF&}"},
+]
+
+
+def choose_edition_strategy(seed: int) -> dict:
+    """
+    Picks a unique combination of editing choices per render run.
+    Returns a dict with all randomized style parameters.
+    """
+    rng = random.Random(seed)
+    palette_name = rng.choice(list(COLOR_PALETTES.keys()))
+    return {
+        "color_palette":    palette_name,
+        "color_filter":     COLOR_PALETTES[palette_name],
+        "hook_strategy":    rng.choice(HOOK_STRATEGIES),
+        "exit_strategy":    rng.choice(EXIT_STRATEGIES),
+        "transition_type":  rng.choice(TRANSITION_TYPES),
+        "meme_y_pos":       rng.choice(MEME_POSITIONS),
+        "subtitle_style":   rng.choice(SUBTITLE_STYLES),
+    }
+
 
 def file_has_audio(file_path: str) -> bool:
     """Checks if a media file has an audio stream."""
@@ -269,19 +334,31 @@ def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
     return list(dict.fromkeys(gameplay_files))
 
 
-def generate_killcard_overlay_if_needed(headshots=3, player_tag="CODIGO HEADSHOT PRO"):
+def generate_killcard_overlay_if_needed(headshots=None, player_tag=None):
     """
-    Ensures the Remotion KillCardOverlay (PDF technical spec) is compiled into a transparent WebM/MOV.
+    Ensures the Remotion KillCardOverlay is compiled into a transparent WebM.
+    Varies headshots (3-6) and player tag per execution for dynamic overlay variety.
     """
+    if headshots is None:
+        headshots = random.choice([3, 4, 5, 6])
+    if player_tag is None:
+        player_tag = random.choice([
+            "TODO ROJO PRO",
+            "INSANE HEADSHOT",
+            "CODIGO HEADSHOT",
+            "MVP FREE FIRE",
+            "HEADSHOT MASTER",
+            "HEROICO INSANO"
+        ])
+
     overlay_dir = PROJECT_ROOT / "overlays"
     overlay_dir.mkdir(parents=True, exist_ok=True)
-    overlay_webm = overlay_dir / "remotion_overlay.webm"
-    overlay_mov = overlay_dir / "remotion_overlay.mov"
+    slug = "".join(c for c in player_tag if c.isalnum())
+    named_webm = overlay_dir / f"remotion_killcard_x{headshots}_{slug}.webm"
+    default_webm = overlay_dir / "remotion_overlay.webm"
 
-    if overlay_webm.exists():
-        return str(overlay_webm)
-    if overlay_mov.exists():
-        return str(overlay_mov)
+    if named_webm.exists():
+        return str(named_webm)
 
     print(f"🎬 [Remotion] Compiling KillCardOverlay (x{headshots}, {player_tag})...")
     try:
@@ -291,15 +368,21 @@ def generate_killcard_overlay_if_needed(headshots=3, player_tag="CODIGO HEADSHOT
             "--killcard",
             "--headshots", str(headshots),
             "--tag", str(player_tag),
-            "--out", "remotion_overlay.webm"
+            "--out", named_webm.name
         ]
-        subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
-        if overlay_webm.exists():
-            return str(overlay_webm)
+        subprocess.run(cmd, cwd=str(PROJECT_ROOT), timeout=60, check=True)
+        if named_webm.exists():
+            return str(named_webm)
     except Exception as e:
-        print(f"⚠️ [Remotion] Could not compile KillCardOverlay via node: {e}")
+        print(f"⚠️ [Remotion] Could not compile dynamic KillCardOverlay: {e}")
 
-    return str(overlay_webm) if overlay_webm.exists() else None
+    # Fallback to any existing pre-compiled WebM overlay
+    if default_webm.exists():
+        return str(default_webm)
+    for existing in overlay_dir.glob("*.webm"):
+        return str(existing)
+
+    return None
 
 
 def shift_subtitles_for_memes(transcribed_segments, meme_events):
@@ -350,13 +433,17 @@ def shift_subtitles_for_memes(transcribed_segments, meme_events):
     return shifted
 
 
-def create_ass_subtitles_916(vo_timeline, output_ass_path, transcribed_segments=None, meme_events=None):
+def create_ass_subtitles_916(vo_timeline, output_ass_path, transcribed_segments=None, meme_events=None, sub_style=None):
     """
     Generates dynamic highlighted ASS subtitles for 9:16 Shorts (1080x1920):
-    - Arial Black font, size 56, yellow & white, 4px black outline, soft shadow.
+    - Font size 56, dynamic color palette based on edition strategy, 4px outline, soft shadow.
     - Positioned at lower third (MarginV: 480, ~y:1440) below centered gameplay and clear of TikTok buttons.
     - Shifted to accommodate meme pauses.
     """
+    pri_color = sub_style.get("primary", "&H0000FFFF&") if sub_style else "&H0000FFFF&"
+    out_color = sub_style.get("outline", "&H00000000&") if sub_style else "&H00000000&"
+    style_tag = sub_style.get("tag", "{\\b1\\c&H0000FFFF&}") if sub_style else "{\\b1\\c&H0000FFFF&}"
+
     header = (
         "[Script Info]\n"
         "Title: Free Fire 9:16 Shorts Subtitles\n"
@@ -369,13 +456,12 @@ def create_ass_subtitles_916(vo_timeline, output_ass_path, transcribed_segments=
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
         "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        "Style: Default,Arial Black,56,&H0000FFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,60,60,480,1\n\n"
+        f"Style: Default,Arial Black,56,{pri_color},{pri_color},{out_color},&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,60,60,480,1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
 
     lines = [header]
-    style_tag = "{\\b1\\c&H0000FFFF&}"
 
     shifted_segments = shift_subtitles_for_memes(transcribed_segments, meme_events)
 
@@ -533,10 +619,20 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     import time as _time
     _entropy_seed = int(_time.time() * 1000) % (2**31)
     random.seed(_entropy_seed)
+
+    # ── EDITION STRATEGY: random look & feel per render ──
+    edition = choose_edition_strategy(_entropy_seed)
+    print(f"🎨 Edition Strategy #{_entropy_seed % 9999}:")
+    print(f"   🎨 Color Palette : {edition['color_palette']}")
+    print(f"   🎬 Exit Strategy : {edition['exit_strategy']}")
+    print(f"   ⚡ Transitions   : {edition['transition_type']}")
+    print(f"   🤡 Meme Y-Pos   : {edition['meme_y_pos']}px")
+
     shuffled_gameplays = gameplay_files.copy()
     random.shuffle(shuffled_gameplays)
     # After shuffle, re-seed with a different offset so all random calls below are also unique
     random.seed(_entropy_seed + 7919)
+
 
     broll_segments = []
     used_ranges = {str(g): [] for g in gameplay_files}
@@ -545,7 +641,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     # Rotate starting position so first clip differs each run
     _start_offset = _entropy_seed % len(shuffled_gameplays)
 
-    while current_broll_total < total_output_dur + 4.0:
+    while current_broll_total < total_output_dur + 8.0:
         gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
         gpath = str(gfile)
         idx += 1
@@ -573,7 +669,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             is_hs = False
         else:
             if source_dur > (gdur - safe_min_st):
-                source_dur = round(gdur - safe_min_st - 0.1, 2)
+                source_dur = round(max(1.2, gdur - safe_min_st - 0.1), 2)
                 tl_dur = round(source_dur / speed, 2)
 
             # Check for red headshot timestamp
@@ -600,6 +696,13 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
                 if cand_start is None:
                     cand_start = safe_min_st
 
+        # Strictly guarantee cand_start + source_dur does not exceed gdur
+        if cand_start + source_dur > gdur:
+            cand_start = max(0.0, gdur - source_dur - 0.05)
+            if cand_start + source_dur > gdur:
+                source_dur = round(max(1.0, gdur - cand_start - 0.05), 2)
+                tl_dur = round(source_dur / speed, 2)
+
         used_ranges[gpath].append(cand_start)
         broll_segments.append({
             "path": gpath,
@@ -625,14 +728,21 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     final_output_path = target_out_dir / out_name
 
     tmp_ass = str(PROJECT_ROOT / "subtitles_temp_916.ass")
-    create_ass_subtitles_916(vo_timeline, tmp_ass, transcribed_segments=transcribed_segments, meme_events=meme_events)
+    create_ass_subtitles_916(
+        vo_timeline, tmp_ass,
+        transcribed_segments=transcribed_segments,
+        meme_events=meme_events,
+        sub_style=edition.get("subtitle_style")
+    )
 
     # 6. Build FFmpeg Filter Complex
     bgm_track = custom_bgm if (custom_bgm and os.path.exists(custom_bgm)) else None
     if not bgm_track and MUSICA_DIR.exists():
         bgms = list(MUSICA_DIR.glob("*.mp3")) + list(MUSICA_DIR.glob("*.wav"))
         if bgms:
-            bgm_track = str(bgms[0])
+            bgm_track = str(random.choice(bgms))
+            print(f"   🎵 BGM Track: {Path(bgm_track).name}")
+
 
     sfx_whoosh = PROJECT_ROOT / "assets" / "sfx" / "whoosh.wav"
     if not sfx_whoosh.exists():
@@ -733,6 +843,10 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     v_concat_labels = []
 
     # 1. Process Video B-rolls into 9:16 (Fluid Gameplay: Uniform 60 FPS, No Zoompan Stutter)
+    # Determine transition filter prefix/suffix based on edition strategy
+    _transition = edition["transition_type"]
+    _color_filt = edition["color_filter"]
+
     for b_i, seg in enumerate(broll_segments):
         in_i = broll_input_indices[b_i]
         lbl = f"v_broll_{b_i}"
@@ -740,17 +854,32 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         spd = seg.get("speed", 1.0)
         pts_filter = f"setpts=(PTS-STARTPTS)/{spd:.2f}" if spd != 1.0 else "setpts=PTS-STARTPTS"
 
-        # Punchy Free Fire color grading without frame-dropping zoompan
-        color_filter = ",eq=contrast=1.15:saturation=1.25:brightness=0.02"
+        # Transition prefix: smooth clean fade-in without tpad PTS desync
+        transition_prefix = ""
+        if b_i > 0:
+            if _transition == "flash_white":
+                transition_prefix = "fade=t=in:st=0:d=0.05:color=white,"
+            elif _transition == "luma_fade":
+                transition_prefix = "fade=t=in:st=0:d=0.07:color=black,"
+        else:
+            # ── Hook entrance strategy for the very first clip ──
+            _hook_strat = edition.get("hook_strategy", "headshot_punch")
+            if _hook_strat == "fade_impact":
+                transition_prefix = "fade=t=in:st=0:d=0.35:color=black,"
+            elif _hook_strat == "flash_snap":
+                transition_prefix = "fade=t=in:st=0:d=0.10:color=white,"
+
+        # Color grade from selected edition palette
+        color_filter = f",{_color_filt}"
 
         filter_parts.append(
-            f"[{in_i}:v]{pts_filter},{rot_filter}"
+            f"[{in_i}:v]{pts_filter},{rot_filter}{transition_prefix}"
             f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2{color_filter},setsar=1,fps=60[{lbl}];"
         )
         v_concat_labels.append(f"[{lbl}]")
 
     concat_str = "".join(v_concat_labels)
-    filter_parts.append(f"{concat_str}concat=n={len(v_concat_labels)}:v=1:a=0[v_base];")
+    filter_parts.append(f"{concat_str}concat=n={len(v_concat_labels)}:v=1:a=0,trim=0:{total_output_dur:.3f},setpts=PTS-STARTPTS[v_base];")
 
     curr_v = "v_base"
 
@@ -782,20 +911,18 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             except Exception:
                 pass
 
-        # 9:16 Optimized Scaling & Placement
+        # 9:16 Optimized Scaling & Placement (Gameplay always moves behind)
         if v_ev.get("type") == "avatar_fullscreen":
-            # User requirement: "en el avatar quiero que tenga un tamaño mas grande amplio cubriendo la pantalla"
-            scale_filter = "scale=980:1500:force_original_aspect_ratio=decrease"
-            pos_expr = "x=(W-w)/2:y=(H-h)/2"
-            pad_filter = ""
+            scale_filter = "scale=650:980:force_original_aspect_ratio=decrease"
+            pos_expr = "x=(W-w)/2:y=180"
+            pad_filter = ",pad=iw+8:ih+8:4:4:color=gold@0.8"
         elif v_ev.get("type") == "asesoria":
-            # User requirement: Asesoria card / interview with client
-            scale_filter = "scale=750:1150:force_original_aspect_ratio=decrease"
+            scale_filter = "scale=620:960:force_original_aspect_ratio=decrease"
             pos_expr = "x=(W-w)/2:y=180"
             pad_filter = ",pad=iw+6:ih+6:3:3:color=white@0.35"
         elif is_green:
             # Full screen green screen overlay (e.g. LLUVIA DE DINERO)
-            scale_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,colorkey=0x00FF00:0.3:0.2"
+            scale_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,chromakey=0x00FF00:0.28:0.08"
             pos_expr = "x=(W-w)/2:y=(H-h)/2"
             pad_filter = ""
         elif is_video:
@@ -853,25 +980,54 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         filter_parts.append(
             f"[{curr_v}][m_proc_{m_i}]overlay="
             f"enable='between(t,{m_out_t:.3f},{m_out_t+m_dur:.3f})':"
-            f"x=(W-w)/2:y=240:eof_action=pass[{next_v}];"
+            f"x=(W-w)/2:y={edition['meme_y_pos']}:eof_action=pass[{next_v}];"
         )
         curr_v = next_v
 
-    # 4. Transparent Green-Screen Like & Subscribe Badge Overlay near video end (Bottom area)
+    # 4. Transparent Green-Screen Like & Subscribe Badge + Exit Strategy
     cta_start = cta_events[0] if cta_events else max(5.0, total_vo_dur - 4.5)
     cta_out_start = map_vo_time_to_output(cta_start)
+    _exit = edition["exit_strategy"]
 
-    filter_parts.append(
-        f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.3f}/TB,"
-        f"scale=420:240:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_proc];"
-    )
-    filter_parts.append(
-        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.3f},{cta_out_start+3.5:.3f})':x=(W-w)/2:y=1600:eof_action=pass[v_with_cta];"
-    )
-    curr_v = "v_with_cta"
+    # Always render the CTA badge for cta_normal; other strategies skip it or show it briefly
+    if _exit in ("cta_normal", "freeze_fade"):
+        filter_parts.append(
+            f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.3f}/TB,"
+            f"scale=420:240:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_proc];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.3f},{cta_out_start+3.5:.3f})':x=(W-w)/2:y=1600:eof_action=pass[v_cta];"
+        )
+        curr_v = "v_cta"
+    else:
+        # No CTA badge for zoom_out_fade / flash_cut — use a smaller version if available
+        filter_parts.append(
+            f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.3f}/TB,"
+            f"scale=300:170:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_proc];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.3f},{min(cta_out_start+2.0, total_output_dur):.3f})':x=30:y=1700:eof_action=pass[v_cta];"
+        )
+        curr_v = "v_cta"
 
-    # 5. Output Video Stream (Subtitles completely removed per user instruction)
-    filter_parts.append(f"[{curr_v}]null[v_final];")
+    # 5. Apply Exit Strategy to final video stream (Continuous moving action, NEVER freezing)
+    fade_start = max(0.0, total_output_dur - 0.8)
+    if _exit == "flash_cut":
+        # White flash at 0.4s before end, then clean fade to black
+        flash_t = max(0.0, total_output_dur - 0.4)
+        filter_parts.append(
+            f"[{curr_v}]trim=0:{total_output_dur:.3f},setpts=PTS-STARTPTS,"
+            f"fade=t=in:st={flash_t:.3f}:d=0.08:color=white,"
+            f"fade=t=out:st={max(0.0, flash_t+0.08):.3f}:d=0.32:color=black[v_final];"
+        )
+    else:
+        # Smooth continuous finish with clean fade out in the final 0.8s
+        filter_parts.append(
+            f"[{curr_v}]trim=0:{total_output_dur:.3f},setpts=PTS-STARTPTS,"
+            f"fade=t=out:st={fade_start:.3f}:d=0.8:color=black[v_final];"
+        )
+
+
 
     # 6. AUDIO: CONTINUOUS VOICEOVER & SUBTLE BGM (Memes are 100% silent visual overlays)
     filter_parts.append(

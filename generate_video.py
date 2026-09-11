@@ -182,17 +182,20 @@ def main():
     # State 3: Training Proof Montage Clips
     state3_clips = []
     curr_t = t_proof
-    while curr_t < total_dur:
+    while curr_t < total_dur + 5.0:
         target_clip_dur = round(random.uniform(2.0, 3.0), 2)
         next_t = snap_to_nearest_beat(curr_t + target_clip_dur, beat_times)
         dur = max(1.5, next_t - curr_t)
         clip_vid = sampler.sample_asset("training")
         if clip_vid:
             sub = sampler.slice_sub_clip(clip_vid, min_dur=dur, max_dur=dur + 0.5)
+            actual_dur = min(dur, sub["duration"])
             sub["timeline_start"] = curr_t
-            sub["timeline_dur"] = dur
+            sub["timeline_dur"] = actual_dur
             state3_clips.append(sub)
-        curr_t += dur
+            curr_t += actual_dur
+        else:
+            curr_t += dur
 
     # State 2 & 3 Memes (snapped to nearest beat, guaranteed at least 2-3 memes)
     meme_events = []
@@ -367,7 +370,7 @@ def main():
         concat_list.append(f"[{lbl}]")
 
     concat_str = "".join(concat_list)
-    filter_parts.append(f"{concat_str}concat=n={len(concat_list)}:v=1:a=0[v_base];")
+    filter_parts.append(f"{concat_str}concat=n={len(concat_list)}:v=1:a=0,trim=0:{total_dur:.2f},setpts=PTS-STARTPTS[v_base];")
 
     curr_v = "v_base"
 

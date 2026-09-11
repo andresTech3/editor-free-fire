@@ -181,6 +181,7 @@ def main(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="Modelo Whisper: tiny / base / small"),
     language: Optional[str] = typer.Option(None, "--lang", help="Idioma: es / en / auto"),
     layout: Optional[str] = typer.Option(None, "--layout", "-l", help="Forzar formato visual: ranking_list / header_banner / split_screen / neon_pointer / financial_highlight"),
+    aspect: str = typer.Option("9:16", "--aspect", "-a", help="Formato de salida: 9:16 (Shorts/TikTok/Reels) o 16:9 (YouTube)"),
     config_file: str = typer.Option("config.toml", "--config", "-c", help="Archivo de configuración"),
 ):
     """
@@ -188,6 +189,7 @@ def main(
 
     Ejemplos:\n
         python main.py input/video.mp4\n
+        python main.py input/video.mp4 --aspect 16:9\n
         python main.py input/video.mp4 --clips 7 --split-screen\n
         python main.py input/video.mp4 --style neon_blue --model small\n
     """
@@ -201,6 +203,14 @@ def main(
     output_cfg = config.get("output", {})
     analysis_cfg = config.get("analysis", {})
     advanced_cfg = config.get("advanced", {})
+
+    # Override resolution based on --aspect flag
+    if "16:9" in aspect or "16x9" in aspect:
+        output_cfg["resolution"] = "1920x1080"
+        config.setdefault("output", {})["resolution"] = "1920x1080"
+    else:
+        output_cfg["resolution"] = "1080x1920"
+        config.setdefault("output", {})["resolution"] = "1080x1920"
 
     # ── Aplicar overrides de CLI ─────────────────────────
     num_clips = clips or general.get("num_clips", 5)

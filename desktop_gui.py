@@ -188,6 +188,29 @@ class FreeFireEditorApp(tk.Tk):
         )
         box_out.pack(fill="x", pady=(0, 8))
 
+        # Row 0: Formato del Video (9:16 Shorts vs 16:9 YouTube)
+        row_fmt = tk.Frame(box_out, bg=CARD)
+        row_fmt.pack(fill="x", pady=(0, 8))
+
+        tk.Label(
+            row_fmt, text="📐 Formato del Video:",
+            font=("Segoe UI", 10, "bold"), fg=GOLD, bg=CARD, width=22, anchor="w"
+        ).pack(side="left")
+
+        tk.Radiobutton(
+            row_fmt, text="📱 9:16 Vertical (Shorts / TikTok / Reels)",
+            variable=self.aspect_var, value="9:16",
+            font=("Segoe UI", 10, "bold"), fg=WHITE, bg=CARD,
+            selectcolor=RED, activebackground=CARD, cursor="hand2"
+        ).pack(side="left", padx=(0, 24))
+
+        tk.Radiobutton(
+            row_fmt, text="🖥️ 16:9 Horizontal (YouTube / Facebook Largo)",
+            variable=self.aspect_var, value="16:9",
+            font=("Segoe UI", 10, "bold"), fg=WHITE, bg=CARD,
+            selectcolor=GOLD, activebackground=CARD, cursor="hand2"
+        ).pack(side="left")
+
         # Row 1: Output directory selection
         row_dir = tk.Frame(box_out, bg=CARD)
         row_dir.pack(fill="x", pady=(0, 6))
