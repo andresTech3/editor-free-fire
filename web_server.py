@@ -146,6 +146,64 @@ class GenerateRequest(BaseModel):
     outname: Optional[str] = None
     outdir: Optional[str] = None
 
+class TTSRequest(BaseModel):
+    text: str
+    api_key: Optional[str] = None
+    voice_id: Optional[str] = None
+
+@app.post("/api/tts")
+async def generate_speech_api(req: TTSRequest):
+    from core.fish_audio_service import text_to_speech
+    text_content = req.text.strip()
+    if not text_content:
+        raise HTTPException(status_code=400, detail="El texto para la locución no puede estar vacío.")
+
+    session_id = str(uuid.uuid4())[:8]
+    session_dir = TEMP_UPLOADS_DIR / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    out_audio = session_dir / "voiceover_tts.mp3"
+
+    res = text_to_speech(text_content, output_path=str(out_audio), api_key=req.api_key)
+    if not res.get("success") or not out_audio.exists():
+        raise HTTPException(status_code=500, detail=res.get("message", "Error al sintetizar voz."))
+
+    res_dir = ASSETS_DIR
+    investigation_summary = {
+        "mode": "official_default_pack",
+        "message": "Locución generada por IA lista con el Pack Maestro Oficial Free Fire",
+        "details": DEFAULT_PACK_SUMMARY
+    }
+
+    sessions[session_id] = {
+        "session_dir": str(session_dir),
+        "audio_path": str(out_audio),
+        "audio_name": "locucion_ia.mp3",
+        "resources_dir": str(res_dir),
+        "use_default": True,
+        "investigation": investigation_summary
+    }
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "audio_name": "locucion_ia.mp3",
+        "audio_path": str(out_audio),
+        "audio_url": f"/api/audio-preview/{session_id}",
+        "engine": res.get("engine"),
+        "notice": res.get("notice"),
+        "message": res.get("message")
+    }
+
+@app.get("/api/audio-preview/{session_id}")
+async def get_audio_preview(session_id: str):
+    sess = sessions.get(session_id)
+    if not sess or not sess.get("audio_path"):
+        raise HTTPException(status_code=404, detail="Audio no encontrado.")
+    audio_file = Path(sess["audio_path"])
+    if not audio_file.exists():
+        raise HTTPException(status_code=404, detail="El archivo de audio no existe.")
+    return FileResponse(audio_file, media_type="audio/mpeg", filename="locucion_ia.mp3")
+
 @app.post("/api/upload")
 async def upload_files(
     audio: UploadFile = File(...),

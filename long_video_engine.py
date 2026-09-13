@@ -196,6 +196,8 @@ def collect_169_gameplay_videos(custom_dir=None):
                 p_str = str(f).lower()
                 if any(ex in p_str for ex in exclude_kw):
                     continue
+                if is_upright_portrait_video(str(f)):
+                    continue
                 gameplay_files.append(f)
 
     if not gameplay_files:
@@ -208,6 +210,8 @@ def collect_169_gameplay_videos(custom_dir=None):
             for f in JUGADAS_DIR.rglob(ext):
                 p_str = str(f).lower()
                 if any(ex in p_str for ex in exclude_kw):
+                    continue
+                if is_upright_portrait_video(str(f)):
                     continue
                 gameplay_files.append(f)
 

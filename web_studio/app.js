@@ -37,6 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const audioPreview = document.getElementById('audioPreview');
   const btnChangeAudio = document.getElementById('btnChangeAudio');
 
+  // TTS Subtabs
+  const tabUploadAudio = document.getElementById('tabUploadAudio');
+  const tabTtsAudio = document.getElementById('tabTtsAudio');
+  const ttsContainer = document.getElementById('ttsContainer');
+  const ttsTextInput = document.getElementById('ttsTextInput');
+  const btnGenerateTts = document.getElementById('btnGenerateTts');
+  const ttsBtnSpinner = document.getElementById('ttsBtnSpinner');
+  const ttsBtnText = document.getElementById('ttsBtnText');
+  const ttsStatusNotice = document.getElementById('ttsStatusNotice');
+
   // Step 2: Resources
   const btnModeDefault = document.getElementById('btnModeDefault');
   const btnModeCustom = document.getElementById('btnModeCustom');
@@ -173,6 +183,93 @@ document.addEventListener('DOMContentLoaded', () => {
     audioUploadPrompt.style.display = 'none';
     audioLoadedInfo.style.display = 'block';
   }
+
+  // 2B. TTS Subtabs and Fish Audio Generation
+  tabUploadAudio?.addEventListener('click', () => {
+    tabUploadAudio.classList.add('active');
+    tabUploadAudio.style.background = 'rgba(255,255,255,0.08)';
+    tabUploadAudio.style.color = '#fff';
+    tabTtsAudio.classList.remove('active');
+    tabTtsAudio.style.background = 'transparent';
+    tabTtsAudio.style.color = '#888';
+    audioDropzone.style.display = 'block';
+    ttsContainer.style.display = 'none';
+  });
+
+  tabTtsAudio?.addEventListener('click', () => {
+    tabTtsAudio.classList.add('active');
+    tabTtsAudio.style.background = 'rgba(255,46,85,0.15)';
+    tabTtsAudio.style.color = '#fff';
+    tabUploadAudio.classList.remove('active');
+    tabUploadAudio.style.background = 'transparent';
+    tabUploadAudio.style.color = '#888';
+    audioDropzone.style.display = 'none';
+    ttsContainer.style.display = 'block';
+  });
+
+  btnGenerateTts?.addEventListener('click', async () => {
+    const text = (ttsTextInput?.value || '').trim();
+    if (!text) {
+      showToast('⚠️ Por favor escribe el texto para la locución');
+      return;
+    }
+
+    btnGenerateTts.disabled = true;
+    ttsBtnSpinner.style.display = 'inline-block';
+    ttsBtnText.textContent = 'Sintetizando voz...';
+    ttsStatusNotice.textContent = 'Conectando con Fish Audio...';
+
+    try {
+      const res = await fetch(buildApiUrl('/api/tts'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'bypass-tunnel-reminder': '1',
+          'Bypass-Tunnel-Reminder': 'true'
+        },
+        body: JSON.stringify({ text })
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `Error HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      selectedAudioFile = {
+        name: data.audio_name || 'locucion_ia.mp3',
+        session_id: data.session_id,
+        audio_path: data.audio_path,
+        size: 1024 * 500
+      };
+
+      loadedAudioName.textContent = `${data.audio_name} (${data.engine === 'fish_audio' ? 'Fish Audio' : 'Voz Neural'})`;
+      audioPreview.src = buildApiUrl(data.audio_url);
+
+      audioUploadPrompt.style.display = 'none';
+      audioLoadedInfo.style.display = 'block';
+      audioDropzone.style.display = 'block';
+      ttsContainer.style.display = 'none';
+
+      tabUploadAudio.classList.add('active');
+      tabUploadAudio.style.background = 'rgba(255,255,255,0.08)';
+      tabUploadAudio.style.color = '#fff';
+      tabTtsAudio.classList.remove('active');
+      tabTtsAudio.style.background = 'transparent';
+      tabTtsAudio.style.color = '#888';
+
+      ttsStatusNotice.textContent = '';
+      showToast(`✅ Locución generada con éxito (${data.engine === 'fish_audio' ? 'Fish Audio' : 'Voz IA'})`);
+    } catch (err) {
+      console.error('Error in TTS:', err);
+      ttsStatusNotice.textContent = `Error: ${err.message}`;
+      showToast(`❌ Error al generar voz: ${err.message}`);
+    } finally {
+      btnGenerateTts.disabled = false;
+      ttsBtnSpinner.style.display = 'none';
+      ttsBtnText.textContent = '🎙️ Generar Locución con IA';
+    }
+  });
 
   // 3. Resources Mode Toggle
   btnModeDefault.addEventListener('click', () => {
@@ -320,46 +417,56 @@ document.addEventListener('DOMContentLoaded', () => {
     resetMilestones();
 
     try {
-      // Step A: Upload Files
-      const uploadFormData = new FormData();
-      uploadFormData.append('audio', selectedAudioFile);
-      uploadFormData.append('use_default_resources', useDefaultResources ? 'true' : 'false');
-
-      if (!useDefaultResources && selectedResourceFiles.length > 0) {
-        for (const file of selectedResourceFiles) {
-          uploadFormData.append('resources', file);
-        }
-      }
-
-      addLogLine(`[SUBIDA] Subiendo audio: ${selectedAudioFile.name} (${(selectedAudioFile.size / 1024 / 1024).toFixed(1)} MB)...`);
-      if (!useDefaultResources) {
-        addLogLine(`[SUBIDA] Subiendo ${selectedResourceFiles.length} recursos visuales...`);
+      // Step A: Upload Files or use pre-generated TTS session
+      let uploadData;
+      if (selectedAudioFile.session_id) {
+        uploadData = {
+          session_id: selectedAudioFile.session_id,
+          audio_name: selectedAudioFile.name,
+          audio_path: selectedAudioFile.audio_path
+        };
+        addLogLine(`[AUDIO] Usando locución sintetizada (${selectedAudioFile.name})`);
       } else {
-        addLogLine(`[INFO] Usando Pack Oficial Maestro integrado.`);
-      }
+        const uploadFormData = new FormData();
+        uploadFormData.append('audio', selectedAudioFile);
+        uploadFormData.append('use_default_resources', useDefaultResources ? 'true' : 'false');
 
-      const uploadRes = await fetch(buildApiUrl('/api/upload'), {
-        method: 'POST',
-        headers: {
-          'bypass-tunnel-reminder': '1',
-          'Bypass-Tunnel-Reminder': 'true'
-        },
-        body: uploadFormData
-      });
-
-      if (!uploadRes.ok) {
-        let errMsg = 'Error en la subida de archivos';
-        try {
-          const errJson = await uploadRes.json();
-          errMsg = errJson.detail || errMsg;
-        } catch (_) {
-          errMsg = `Error HTTP ${uploadRes.status} (${uploadRes.statusText})`;
+        if (!useDefaultResources && selectedResourceFiles.length > 0) {
+          for (const file of selectedResourceFiles) {
+            uploadFormData.append('resources', file);
+          }
         }
-        throw new Error(errMsg);
-      }
 
-      const uploadData = await uploadRes.json();
-      addLogLine(`[OK] Subida completada: ${uploadData.audio_name}`);
+        addLogLine(`[SUBIDA] Subiendo audio: ${selectedAudioFile.name} (${(selectedAudioFile.size / 1024 / 1024).toFixed(1)} MB)...`);
+        if (!useDefaultResources) {
+          addLogLine(`[SUBIDA] Subiendo ${selectedResourceFiles.length} recursos visuales...`);
+        } else {
+          addLogLine(`[INFO] Usando Pack Oficial Maestro integrado.`);
+        }
+
+        const uploadRes = await fetch(buildApiUrl('/api/upload'), {
+          method: 'POST',
+          headers: {
+            'bypass-tunnel-reminder': '1',
+            'Bypass-Tunnel-Reminder': 'true'
+          },
+          body: uploadFormData
+        });
+
+        if (!uploadRes.ok) {
+          let errMsg = 'Error en la subida de archivos';
+          try {
+            const errJson = await uploadRes.json();
+            errMsg = errJson.detail || errMsg;
+          } catch (_) {
+            errMsg = `Error HTTP ${uploadRes.status} (${uploadRes.statusText})`;
+          }
+          throw new Error(errMsg);
+        }
+
+        uploadData = await uploadRes.json();
+        addLogLine(`[OK] Subida completada: ${uploadData.audio_name}`);
+      }
 
       // Step B: Request Generation
       const selectedRatio = document.querySelector('input[name="aspectRatio"]:checked')?.value || localStorage.getItem('FREEFIRE_ASPECT_RATIO') || '9:16';

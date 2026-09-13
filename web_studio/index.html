@@ -80,6 +80,17 @@
         </div>
       </div>
 
+      <!-- Toggle: Subir Audio vs Generar Voz con IA -->
+      <div class="audio-tabs-container" style="display: flex; gap: 8px; margin-bottom: 14px;">
+        <button type="button" class="btn-subtab active" id="tabUploadAudio" style="flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #fff; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+          📁 Subir Archivo de Audio
+        </button>
+        <button type="button" class="btn-subtab" id="tabTtsAudio" style="flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #888; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+          ✨ Voz con IA (Fish Audio)
+        </button>
+      </div>
+
+      <!-- Opción A: Upload Dropzone -->
       <div class="upload-zone" id="audioDropzone">
         <input type="file" id="audioFileInput" accept="audio/*" class="file-hidden">
         <div class="upload-content" id="audioUploadPrompt">
@@ -94,6 +105,22 @@
           </div>
           <audio id="audioPreview" controls class="audio-mini-player"></audio>
           <button type="button" class="btn-change" id="btnChangeAudio">Cambiar</button>
+        </div>
+      </div>
+
+      <!-- Opción B: Text to Speech (Fish Audio) -->
+      <div id="ttsContainer" style="display: none; background: rgba(255, 46, 85, 0.04); border: 1px solid rgba(255, 46, 85, 0.25); border-radius: 12px; padding: 16px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; color: #fff;">
+          ✍️ Escribe el guion de voz para el video:
+        </label>
+        <textarea id="ttsTextInput" placeholder="Ej: Hola cracks, hoy les traigo la mejor sensibilidad y DPI de Free Fire para dar todo rojo en esta actualización..." rows="4" style="width: 100%; border-radius: 8px; padding: 10px; background: #13131a; color: #fff; border: 1px solid #333; resize: vertical; font-family: inherit; font-size: 0.92rem;"></textarea>
+
+        <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button type="button" id="btnGenerateTts" style="background: linear-gradient(135deg, #ff2e55, #ff6b3d); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <span id="ttsBtnSpinner" style="display: none;">⏳</span>
+            <span id="ttsBtnText">🎙️ Generar Locución con IA</span>
+          </button>
+          <span id="ttsStatusNotice" style="font-size: 0.85rem; color: #ffb703;"></span>
         </div>
       </div>
     </section>

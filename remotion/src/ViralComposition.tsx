@@ -531,17 +531,23 @@ export const ViralComposition: React.FC<ExtendedViralProps> = ({
   const currentTimeSec = frame / fps;
   const totalFrames    = Math.round(durationInSeconds * fps);
 
+  const safeCropMeta = cropMeta || { orig_width: 1920, orig_height: 1080, crop_w: 1080, crop_h: 1920, fps: 30 };
+  const cropW = safeCropMeta.crop_w || 1080;
+  const cropH = safeCropMeta.crop_h || 1920;
+  const origW = safeCropMeta.orig_width || 1920;
+  const origH = safeCropMeta.orig_height || 1080;
+
   // ── Face tracking ──────────────────────────────────────────────────────
-  const globalFrameIdx = Math.round(startTime * fps) + frame;
-  let crop = cropPositions.find((p) => p.frame_idx === globalFrameIdx);
-  if (!crop && cropPositions.length > 0) {
+  const globalFrameIdx = Math.round((startTime || 0) * fps) + frame;
+  let crop = (cropPositions || []).find((p) => p.frame_idx === globalFrameIdx);
+  if (!crop && cropPositions && cropPositions.length > 0) {
     crop = cropPositions.reduce((prev, curr) =>
       Math.abs(curr.frame_idx - globalFrameIdx) < Math.abs(prev.frame_idx - globalFrameIdx)
         ? curr : prev
     );
   }
-  const cx = crop ? crop.crop_x : (cropMeta.orig_width  - cropMeta.crop_w) / 2;
-  const cy = crop ? crop.crop_y : (cropMeta.orig_height - cropMeta.crop_h) / 2;
+  const cx = crop ? crop.crop_x : (origW - cropW) / 2;
+  const cy = crop ? crop.crop_y : (origH - cropH) / 2;
 
   // ── Ken Burns + Punch zoom ────────────────────────────────────────────
   const kenBurnsZoom = interpolate(frame, [0, totalFrames], [1.0, 1.08], {
@@ -551,7 +557,7 @@ export const ViralComposition: React.FC<ExtendedViralProps> = ({
   const finalZoom  = useZoom ? kenBurnsZoom * punchScale : punchScale;
 
   // ── Escala y traslación ────────────────────────────────────────────────
-  const scale      = height / cropMeta.crop_h;
+  const scale      = height / cropH;
   const translateX = -cx * scale;
   const translateY = -cy * scale;
 
@@ -564,11 +570,11 @@ export const ViralComposition: React.FC<ExtendedViralProps> = ({
   );
 
   // ── Coordenadas de tracking dinámico para Puntero Neón ────────────────
-  const scaleX = width / cropMeta.crop_w;
-  const scaleY = height / cropMeta.crop_h;
+  const scaleX = width / cropW;
+  const scaleY = height / cropH;
 
-  const faceX = crop?.face_x ?? (cx + cropMeta.crop_w / 2);
-  const faceY = crop?.face_y ?? (cy + cropMeta.crop_h / 3);
+  const faceX = crop?.face_x ?? (cx + cropW / 2);
+  const faceY = crop?.face_y ?? (cy + cropH / 3);
 
   const targetCanvasX = (faceX - cx) * scaleX;
   const targetCanvasY = (faceY - cy) * scaleY;
@@ -577,6 +583,31 @@ export const ViralComposition: React.FC<ExtendedViralProps> = ({
   const logoLeft = Math.round((width - LOGO_WIDTH) / 2);
 
   let captionPositionY = 0.70;
+
+  // ── Resolución segura de ruta de video (evita 404 / pantalla negra) ─────
+  const resolvedVideoSrc = React.useMemo(() => {
+    if (!videoPath) return "";
+    const clean = String(videoPath).trim();
+    if (
+      clean.startsWith("http://") ||
+      clean.startsWith("https://") ||
+      clean.startsWith("blob:") ||
+      clean.startsWith("data:")
+    ) {
+      return clean;
+    }
+    if (clean.startsWith("file://")) {
+      return clean;
+    }
+    if (/^[a-zA-Z]:[\\/]/.test(clean)) {
+      return "file:///" + clean.replace(/\\/g, "/");
+    }
+    try {
+      return staticFile(clean);
+    } catch {
+      return clean;
+    }
+  }, [videoPath]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black", opacity: fadeOpacity }}>
@@ -595,21 +626,25 @@ export const ViralComposition: React.FC<ExtendedViralProps> = ({
           <div
             style={{
               position: "absolute",
-              width:  cropMeta.orig_width  * scale,
-              height: cropMeta.orig_height * scale,
+              width:  origW * scale,
+              height: origH * scale,
               transform: `translate(${translateX}px, ${translateY}px)`,
             }}
           >
-            <OffthreadVideo
-              src={staticFile(videoPath)}
-              startFrom={Math.round(startTime * fps)}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                filter: getVideoFilter(layoutStyle === "financial_highlight" ? "neutral" : "warm_vibrant"),
-              }}
-            />
+            {resolvedVideoSrc ? (
+              <OffthreadVideo
+                src={resolvedVideoSrc}
+                startFrom={Math.round((startTime || 0) * fps)}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  filter: getVideoFilter(layoutStyle === "financial_highlight" ? "neutral" : "warm_vibrant"),
+                }}
+              />
+            ) : (
+              <div style={{ width: "100%", height: "100%", backgroundColor: "#0f0f13" }} />
+            )}
           </div>
         </div>
       </AbsoluteFill>

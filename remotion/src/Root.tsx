@@ -54,9 +54,9 @@ export type ViralProps = {
 
 // Props default para testear en el Studio sin Python
 const defaultProps: ViralProps = {
-  videoPath: "file:///C:/Users/SnyX/Documents/Proyectos/Edicion en Capcut/input/Slip N Slide Football Final.mp4",
-  startTime: 1225,
-  durationInSeconds: 30,
+  videoPath: "input/bebe_jugando_perro_omni.mp4",
+  startTime: 0,
+  durationInSeconds: 10,
   fps: 30,
   cropMeta: { orig_width: 1920, orig_height: 1080, crop_w: 607, crop_h: 1080, fps: 30 },
   cropPositions: [],

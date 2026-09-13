@@ -27,8 +27,8 @@ from core.asset_catalog import (
 
 def is_upright_portrait_video(video_path: str) -> bool:
     """
-    Checks if a video is an upright portrait recording (e.g. Discord, TikTok, WhatsApp, phone UI)
-    where width < height and the phone was held vertically upright.
+    Checks if a video is an upright portrait recording (e.g. Discord, TikTok, WhatsApp, phone UI, CapCut)
+    where width < height and the phone was held vertically upright without landscape rotation tags.
     """
     try:
         cmd = [
@@ -52,72 +52,22 @@ def is_upright_portrait_video(video_path: str) -> bool:
             if "rotation" in sd:
                 rot = sd["rotation"]
 
+        # If it has 90/-90/270 degree rotation metadata, it's horizontal gameplay recorded on phone
         if rot in [90, -90, 270, -270, "90", "-90", "270", "-270"]:
             return False
 
-        if w >= h or w <= 0 or h <= 0:
-            return False
-
-        fname = Path(video_path).name.lower()
-        if fname in ["img_1326.mov", "img_1355.mp4"]:
+        # If width < height and no rotation tag, it's genuinely an upright vertical screen recording
+        if w > 0 and h > 0 and w < h:
             return True
-
-        # Dynamic check via frame sampling
-        import cv2
-        cap = cv2.VideoCapture(str(video_path))
-        cap.set(cv2.CAP_PROP_POS_MSEC, 1000)
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            ret, frame = cap.read()
-        cap.release()
-
-        if ret and frame is not None:
-            fh, fw = frame.shape[:2]
-            top_bar = frame[:int(fh * 0.05), :]
-            bot_bar = frame[-int(fh * 0.15):, :]
-            if top_bar.mean() < 30 and bot_bar.mean() < 50:
-                return True
     except Exception:
         pass
     return False
 
 def get_video_orientation_filter(video_path: str) -> str:
     """
-    Detects if gameplay video is recorded sideways (e.g. 1290x2796)
-    without rotation metadata, and returns FFmpeg transpose filter to straighten it.
-    If the video is already an upright portrait phone recording, returns "" so it stays upright.
+    Returns orientation filter for video. FFmpeg automatically handles rotation metadata.
+    Never returns destructive transpose filters that bend or rotate videos sideways.
     """
-    try:
-        if is_upright_portrait_video(video_path):
-            return ""
-
-        cmd = [
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_streams",
-            "-of", "json", str(video_path)
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-        data = json.loads(res.stdout)
-        stream = data["streams"][0]
-        w = int(stream.get("width", 0))
-        h = int(stream.get("height", 0))
-        tags = stream.get("tags", {})
-        side_data = stream.get("side_data_list", [])
-
-        rot = None
-        if "rotate" in tags:
-            rot = tags["rotate"]
-        for sd in side_data:
-            if "rotation" in sd:
-                rot = sd["rotation"]
-
-        # If w < h and rot is None or 0, it's recorded sideways (Free Fire gameplay 90 CCW)
-        if w > 0 and h > 0 and w < h and (rot is None or str(rot) == "0"):
-            return "transpose=2," # 90 degrees CCW
-    except Exception:
-        pass
     return ""
 
 def get_image_orientation_filter(image_path: str) -> str:
