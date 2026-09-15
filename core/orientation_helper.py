@@ -27,8 +27,8 @@ from core.asset_catalog import (
 
 def is_upright_portrait_video(video_path: str) -> bool:
     """
-    Checks if a video is an upright portrait recording (e.g. Discord, TikTok, WhatsApp, phone UI, CapCut)
-    where width < height and the phone was held vertically upright without landscape rotation tags.
+    Checks if a video is an upright portrait recording (width < height when decoded by FFmpeg),
+    including vertical screen recordings (Discord, TikTok, phone UI) or vertical recordings with rotation metadata.
     """
     try:
         cmd = [
@@ -52,13 +52,14 @@ def is_upright_portrait_video(video_path: str) -> bool:
             if "rotation" in sd:
                 rot = sd["rotation"]
 
-        # If it has 90/-90/270 degree rotation metadata, it's horizontal gameplay recorded on phone
+        # Calculate effective dimensions as decoded by FFmpeg
         if rot in [90, -90, 270, -270, "90", "-90", "270", "-270"]:
-            return False
+            ew, eh = h, w
+        else:
+            ew, eh = w, h
 
-        # If width < height and no rotation tag, it's genuinely an upright vertical screen recording
-        if w > 0 and h > 0 and w < h:
-            return True
+        if ew > 0 and eh > 0:
+            return ew < eh
     except Exception:
         pass
     return False

@@ -180,7 +180,10 @@ def collect_169_gameplay_videos(custom_dir=None):
     if is_custom:
         for ext in video_exts:
             for f in target_dir.rglob(ext):
-                if "intro" in f.name.lower():
+                p_str = str(f).lower()
+                if any(ex in p_str for ex in ["intro", "emotes", "img_1356", "img_1366"]):
+                    continue
+                if is_upright_portrait_video(str(f)):
                     continue
                 gameplay_files.append(f)
         if gameplay_files:
@@ -188,7 +191,7 @@ def collect_169_gameplay_videos(custom_dir=None):
     else:
         exclude_kw = [
             "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "intro",
-            "img_1356", "img_1366"
+            "img_1356", "img_1366", "emotes"
         ]
 
         for ext in video_exts:
@@ -203,7 +206,7 @@ def collect_169_gameplay_videos(custom_dir=None):
     if not gameplay_files:
         exclude_kw = [
             "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "intro",
-            "img_1356", "img_1366"
+            "img_1356", "img_1366", "emotes"
         ]
 
         for ext in video_exts:
@@ -432,8 +435,8 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         avail_span = max(5.0, total_vo_dur - meme_start_t - 2.0)
         step = avail_span / (target_meme_cnt + 1)
 
+        # User requirement: "son memes sin fondo verde completo no fondo verdes"
         pack_files = list(MEMES_PACK_DIR.glob("*.mp4"))
-        green_files = list(MEMES_GREEN_DIR.rglob("*.mp4"))
 
         used_paths = set()
         for m_idx in range(target_meme_cnt):
@@ -443,31 +446,21 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             if m_t >= total_vo_dur - 1.5:
                 continue
 
-            use_pack = (m_idx % 2 == 0)
             m_path = None
-            is_green = False
-            if use_pack and pack_files:
+            if pack_files:
                 choices = [f for f in pack_files if str(f) not in used_paths] or pack_files
                 m_path = random.choice(choices)
-                is_green = False
-            elif green_files:
-                choices = [f for f in green_files if str(f) not in used_paths] or green_files
-                m_path = random.choice(choices)
-                is_green = True
-            elif pack_files:
-                m_path = random.choice(pack_files)
-                is_green = False
 
             if m_path:
                 used_paths.add(str(m_path))
-                dur = 2.0 if is_green else 1.8
+                dur = 1.8
                 meme_events.append({
                     "time": m_t,
                     "duration": dur,
                     "category": "reaction",
                     "matched_phrase": "[Guaranteed 16:9 Contextual Reaction]",
                     "meme_path": str(m_path),
-                    "is_green_screen": is_green
+                    "is_green_screen": False
                 })
 
         meme_events.sort(key=lambda x: x["time"])
@@ -567,24 +560,32 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     print(f"   🎨 Color Palette : {edition_169['color_palette']}")
     print(f"   ⚡ Transitions   : {edition_169['transition_type']}")
 
-    shuffled_gameplays = gameplay_files.copy()
-    random.shuffle(shuffled_gameplays)
-    _start_offset = _entropy_seed % len(shuffled_gameplays)
+    # Guarantee variety: Prioritize fresh clips from history and never repeat a clip in the same video
+    available_gameplays = list(gameplay_files)
+    used_gameplay_names = set()
+
+    def get_next_gameplay_file():
+        nonlocal available_gameplays
+        unused = [g for g in available_gameplays if g.name not in used_gameplay_names]
+        if not unused:
+            used_gameplay_names.clear()
+            unused = list(available_gameplays)
+        chosen = unused[0]
+        used_gameplay_names.add(chosen.name)
+        return chosen
 
     # Rhythmic alternation cycle: Frenetic (fast cuts, 1.25x-1.35x speed) -> Slow (steady cuts, 1.0x speed) -> Medium
     rhythm_cycle = ['frenetic', 'frenetic', 'slow', 'frenetic', 'medium', 'slow', 'frenetic', 'frenetic', 'slow']
 
     used_ranges = {str(g): [] for g in gameplay_files}
-    idx = 0
 
     # ── A. Hook Segments (Covering PRECISELY intro_insert_time before Intro) ──
     hook_segments = []
     if has_intro:
         current_hook_dur = 0.0
         while current_hook_dur < intro_insert_time - 0.05:
-            gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
+            gfile = get_next_gameplay_file()
             gpath = str(gfile)
-            idx += 1
 
             cap = cv2.VideoCapture(gpath)
             fps_in = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -612,12 +613,18 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             cand_start = 1.0
             is_hs = False
             if hs_list:
-                for (hs_t, hs_sc) in hs_list:
+                shuffled_hs = hs_list.copy()
+                random.shuffle(shuffled_hs)
+                for (hs_t, hs_sc) in shuffled_hs:
                     st = max(1.0, hs_t - 0.7)
                     if st + source_dur <= safe_end:
-                        cand_start = st
-                        is_hs = True
-                        break
+                        if not any(abs(st - existing) < (source_dur + 1.5) for existing in used_ranges[gpath]):
+                            cand_start = st
+                            is_hs = True
+                            break
+
+            if not is_hs and safe_end > source_dur + 1.5:
+                cand_start = round(random.uniform(1.0, safe_end - source_dur), 2)
 
             used_ranges[gpath].append(cand_start)
             hook_segments.append({
@@ -645,9 +652,8 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     target_post_broll = total_output_dur - (intro_insert_time if has_intro else 0.0) - (intro_dur if has_intro else 0.0) + 5.0
 
     while current_post_broll < target_post_broll:
-        gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
+        gfile = get_next_gameplay_file()
         gpath = str(gfile)
-        idx += 1
 
         cap = cv2.VideoCapture(gpath)
         fps_in = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -684,7 +690,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         is_hs = False
 
         if hs_list and r_type in ['frenetic', 'medium']:
-            for (hs_t, hs_sc) in hs_list:
+            shuffled_hs = hs_list.copy()
+            random.shuffle(shuffled_hs)
+            for (hs_t, hs_sc) in shuffled_hs:
                 st = max(1.0, hs_t - 0.7)
                 if st + source_dur <= safe_end:
                     if not any(abs(st - existing) < (source_dur + 1.5) for existing in used_ranges[gpath]):
@@ -890,15 +898,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         spd = seg.get("speed", 1.0)
         pts_filter = f"setpts=(PTS-STARTPTS)/{spd:.2f}" if spd != 1.0 else "setpts=PTS-STARTPTS"
 
-        if is_upright_portrait_video(seg["path"]):
-            # User requirement: Keep vertical, show whole video, blurred background behind
-            filter_parts.append(
-                f"[{in_i}:v]{pts_filter},split=2[bg_raw_{b_i}][fg_raw_{b_i}];"
-                f"[bg_raw_{b_i}]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5,eq=brightness=-0.15[bg_{b_i}];"
-                f"[fg_raw_{b_i}]scale=-1:1080:force_original_aspect_ratio=decrease,setsar=1[fg_{b_i}];"
-                f"[bg_{b_i}][fg_{b_i}]overlay=x=(W-w)/2:y=0,fps=60[{lbl}];"
-            )
-        elif seg["is_headshot"]:
+        if seg["is_headshot"]:
             filter_parts.append(
                 f"[{in_i}:v]{pts_filter},{rot_filter}"
                 f"scale=2208:1242:force_original_aspect_ratio=increase,crop=1920:1080,{edition_169['color_filter']},setsar=1,fps=60[{lbl}];"

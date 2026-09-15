@@ -365,14 +365,12 @@ class SemanticDirector:
                     meme_path = self._find_green_meme_for_context(meme_cat, used_memes)
                     is_green = True if meme_path else False
                 else:
-                    # Long 16:9 videos: pick from PACK DE MEMES matching context, fallback to green-screen
+                    # Long 16:9 videos: User requirement: "son memes sin fondo verde completo no fondo verdes"
+                    # Strictly pick from PACK DE MEMES (full-screen 16:9 complete memes, NEVER green screen)
                     pack_meme = self._find_best_pack_meme_for_context(meme_cat, seg_text, used_memes)
                     if pack_meme:
                         meme_path = pack_meme
                         is_green = False
-                    else:
-                        meme_path = self._find_green_meme_for_context(meme_cat, used_memes)
-                        is_green = True
 
                 if meme_path:
                     used_memes.add(meme_path)
@@ -457,28 +455,21 @@ class SemanticDirector:
                 f_cat = fallback_cats[cat_idx % len(fallback_cats)]
                 cat_idx += 1
 
-                # Alternate between 16:9 PACK DE MEMES and Green Screen Memes
-                use_pack = (len(meme_events) % 2 == 0)
-                m_path = None
+                # Long 16:9 videos: User requirement: "son memes sin fondo verde completo no fondo verdes"
+                # Strictly pick from PACK DE MEMES (full-screen 16:9 complete memes, NEVER green screen)
+                m_path = self._find_best_pack_meme_for_context(f_cat, f_cat, used_memes)
                 is_green = False
-                if use_pack:
-                    m_path = self._find_best_pack_meme_for_context(f_cat, f_cat, used_memes)
-                    if m_path:
-                        is_green = False
-                if not m_path:
-                    m_path = self._find_green_meme_for_context(f_cat, used_memes)
-                    is_green = True if m_path else False
 
                 if m_path:
                     used_memes.add(m_path)
-                    dur = 2.0 if is_green else 1.8
+                    dur = 1.8
                     meme_events.append({
                         "time": round(ct, 2),
                         "duration": dur,
                         "category": f_cat,
-                        "matched_phrase": f"[Reacción Contextual: {f_cat}]",
+                        "matched_phrase": f"[Reacción Contextual 16:9: {f_cat}]",
                         "meme_path": m_path,
-                        "is_green_screen": is_green
+                        "is_green_screen": False
                     })
 
             meme_events.sort(key=lambda x: x["time"])
