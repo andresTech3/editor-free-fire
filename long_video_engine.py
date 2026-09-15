@@ -388,13 +388,10 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     transcribed_segments = plan.get("segments", [])
 
     # ── INTRO & HOOK SPECIFICATION ──────────────────────────────────────────
-    # User requirement: "agrega siempre mas que todo en los videos largos la intro que te pase que se reproduzca despues del hook del video y eso si quiero que sea completo"
-    intro_file_path = JUGADAS_DIR / "Intro.mp4"
-    if not intro_file_path.exists():
-        intro_file_path = ASSETS_DIR / "free fire jugadas" / "Intro.mp4"
-
-    has_intro = intro_file_path.exists()
-    intro_dur = 10.0 if has_intro else 0.0
+    # User requirement: "quita lo de la intro" -> Intro completely disabled
+    has_intro = False
+    intro_dur = 0.0
+    intro_file_path = None
 
     # Calculate Hook Duration (end of first statement/segment, between 3.5s and 7.5s)
     hook_duration = 5.0
@@ -410,9 +407,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             else:
                 hook_duration = round(max(3.5, seg0_end), 2)
 
-    # User requirement: "quiero que aparesca la intro pero unos 2s despues del hook"
-    # Hook plays, then ~2.0s of continuation gameplay/speech, THEN channel intro!
-    intro_insert_time = round(min(hook_duration + 2.0, total_vo_dur - 4.0), 2) if (has_intro and total_vo_dur > 8.0) else hook_duration
+    intro_insert_time = hook_duration
 
     # Sort memes chronologically by cut time in voiceover
     raw_meme_events = sorted(raw_meme_events, key=lambda x: x["time"])
@@ -579,77 +574,76 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
 
     used_ranges = {str(g): [] for g in gameplay_files}
 
-    # ── A. Hook Segments (Covering PRECISELY intro_insert_time before Intro) ──
+    # ── A. Hook Segments (Covering opening hook cuts with high energy) ──
     hook_segments = []
-    if has_intro:
-        current_hook_dur = 0.0
-        while current_hook_dur < intro_insert_time - 0.05:
-            gfile = get_next_gameplay_file()
-            gpath = str(gfile)
+    current_hook_dur = 0.0
+    while current_hook_dur < hook_duration - 0.05:
+        gfile = get_next_gameplay_file()
+        gpath = str(gfile)
 
-            cap = cv2.VideoCapture(gpath)
-            fps_in = cap.get(cv2.CAP_PROP_FPS) or 30.0
-            n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 300
-            gdur = n_frames / fps_in
-            if gdur < 0.5:
-                continue
-            safe_end = gdur if gdur <= 2.5 else max(1.0, gdur - 1.0)
+        cap = cv2.VideoCapture(gpath)
+        fps_in = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 300
+        gdur = n_frames / fps_in
+        if gdur < 0.5:
+            continue
+        safe_end = gdur if gdur <= 2.5 else max(1.0, gdur - 1.0)
 
-            needed_dur = round(intro_insert_time - current_hook_dur, 2)
-            tl_dur = min(needed_dur, round(random.uniform(1.8, 2.6), 2))
-            if needed_dur - tl_dur < 1.0:
+        needed_dur = round(hook_duration - current_hook_dur, 2)
+        tl_dur = min(needed_dur, round(random.uniform(1.8, 2.6), 2))
+        if needed_dur - tl_dur < 1.0:
+            tl_dur = needed_dur
+
+        speed = 1.25
+        source_dur = round(tl_dur * speed, 2)
+        if source_dur >= safe_end - 1.0:
+            source_dur = max(1.0, safe_end - 1.0)
+            tl_dur = round(source_dur / speed, 2)
+            if tl_dur > needed_dur:
                 tl_dur = needed_dur
+                source_dur = round(tl_dur * speed, 2)
 
-            speed = 1.25
-            source_dur = round(tl_dur * speed, 2)
-            if source_dur >= safe_end - 1.0:
-                source_dur = max(1.0, safe_end - 1.0)
-                tl_dur = round(source_dur / speed, 2)
-                if tl_dur > needed_dur:
-                    tl_dur = needed_dur
-                    source_dur = round(tl_dur * speed, 2)
+        hs_list = headshot_map.get(gpath, [])
+        cand_start = 1.0
+        is_hs = False
+        if hs_list:
+            shuffled_hs = hs_list.copy()
+            random.shuffle(shuffled_hs)
+            for (hs_t, hs_sc) in shuffled_hs:
+                st = max(1.0, hs_t - 0.7)
+                if st + source_dur <= safe_end:
+                    if not any(abs(st - existing) < (source_dur + 1.5) for existing in used_ranges[gpath]):
+                        cand_start = st
+                        is_hs = True
+                        break
 
-            hs_list = headshot_map.get(gpath, [])
-            cand_start = 1.0
-            is_hs = False
-            if hs_list:
-                shuffled_hs = hs_list.copy()
-                random.shuffle(shuffled_hs)
-                for (hs_t, hs_sc) in shuffled_hs:
-                    st = max(1.0, hs_t - 0.7)
-                    if st + source_dur <= safe_end:
-                        if not any(abs(st - existing) < (source_dur + 1.5) for existing in used_ranges[gpath]):
-                            cand_start = st
-                            is_hs = True
-                            break
+        if not is_hs and safe_end > source_dur + 1.5:
+            cand_start = round(random.uniform(1.0, safe_end - source_dur), 2)
 
-            if not is_hs and safe_end > source_dur + 1.5:
-                cand_start = round(random.uniform(1.0, safe_end - source_dur), 2)
+        used_ranges[gpath].append(cand_start)
+        hook_segments.append({
+            "path": gpath,
+            "name": gfile.name,
+            "start": cand_start,
+            "dur": source_dur,
+            "timeline_dur": tl_dur,
+            "speed": speed,
+            "mode": "🔥 HOOK (Opening Cut)",
+            "is_headshot": is_hs
+        })
+        current_hook_dur += tl_dur
 
-            used_ranges[gpath].append(cand_start)
-            hook_segments.append({
-                "path": gpath,
-                "name": gfile.name,
-                "start": cand_start,
-                "dur": source_dur,
-                "timeline_dur": tl_dur,
-                "speed": speed,
-                "mode": "🔥 HOOK (Opening Cut)",
-                "is_headshot": is_hs
-            })
-            current_hook_dur += tl_dur
+    # Ensure hook segments sum up to PRECISELY hook_duration
+    if hook_segments:
+        discrepancy = round(hook_duration - sum(s["timeline_dur"] for s in hook_segments), 2)
+        if discrepancy != 0:
+            hook_segments[-1]["timeline_dur"] = round(hook_segments[-1]["timeline_dur"] + discrepancy, 2)
+            hook_segments[-1]["dur"] = round(hook_segments[-1]["timeline_dur"] * hook_segments[-1]["speed"], 2)
 
-        # Ensure hook segments sum up to PRECISELY intro_insert_time
-        if hook_segments:
-            discrepancy = round(intro_insert_time - sum(s["timeline_dur"] for s in hook_segments), 2)
-            if discrepancy != 0:
-                hook_segments[-1]["timeline_dur"] = round(hook_segments[-1]["timeline_dur"] + discrepancy, 2)
-                hook_segments[-1]["dur"] = round(hook_segments[-1]["timeline_dur"] * hook_segments[-1]["speed"], 2)
-
-    # ── B. Post-Intro B-Roll Segments ──────────────────────────────────────
+    # ── B. Post-Hook Continuous B-Roll Segments ────────────────────────────
     post_intro_segments = []
     current_post_broll = 0.0
-    target_post_broll = total_output_dur - (intro_insert_time if has_intro else 0.0) - (intro_dur if has_intro else 0.0) + 5.0
+    target_post_broll = total_output_dur - hook_duration + 5.0
 
     while current_post_broll < target_post_broll:
         gfile = get_next_gameplay_file()
@@ -1126,16 +1120,13 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         f"{concat_audio_str}concat=n={len(vo_chunks)}:v=0:a=1[vo_spliced];"
     )
 
-    # Background Music (covers total_output_dur at low level; ducked during intro)
-    if has_intro:
-        bgm_vol_expr = f"volume='if(between(t,{intro_insert_time:.2f},{intro_insert_time+intro_dur:.2f}),0.01,0.08)':eval=frame"
-    else:
-        bgm_vol_expr = "volume=0.08"
+    # Background Music (covers total_output_dur at balanced level)
+    bgm_vol_expr = "volume=0.07"
 
     filter_parts.append(
         f"[1:a]atrim=start=0:duration={total_output_dur:.2f},asetpts=PTS-STARTPTS,{bgm_vol_expr}[bgm_quiet];"
     )
-    filter_parts.append(f"[2:a]volume=0.4[whoosh];")
+    filter_parts.append(f"[2:a]volume=0.35[whoosh];")
 
     mix_inputs = ["[vo_spliced]", "[bgm_quiet]", "[whoosh]"]
 
@@ -1147,7 +1138,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             delay_ms = int(v_out_t * 1000)
             lbl = f"sfx_vis_{v_i}"
             filter_parts.append(
-                f"[{sfx_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.6[{lbl}];"
+                f"[{sfx_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.4[{lbl}];"
             )
             mix_inputs.append(f"[{lbl}]")
 
@@ -1158,13 +1149,17 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         delay_ms = int(s_out_t * 1000)
         lbl = f"sfx_sem_{s_i}"
         filter_parts.append(
-            f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.45[{lbl}];"
+            f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.35[{lbl}];"
         )
         mix_inputs.append(f"[{lbl}]")
 
     mix_str = "".join(mix_inputs)
+    # Master audio: amix with normalize=0 (prevents voice attenuation) + broadcast standard loudnorm (-14 LUFS)
     filter_parts.append(
-        f"{mix_str}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2[a_final]"
+        f"{mix_str}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
+    )
+    filter_parts.append(
+        f"[a_mixed]loudnorm=I=-14:LRA=7:TP=-1.5[a_final];"
     )
 
     filter_complex = "\n".join(filter_parts)

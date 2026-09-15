@@ -15,6 +15,7 @@ import math
 import random
 import argparse
 import tempfile
+import time
 import subprocess
 from pathlib import Path
 
@@ -176,28 +177,8 @@ def main():
     if p_vid:
         hook_planes.append(sampler.slice_sub_clip(p_vid, min_dur=t_hook, max_dur=t_hook + 1.0))
 
-    # Channel Intro (plays ~2s after the hook: "quiero que aparesca la intro pero unos 2s despues del hook")
-    intro_path = None
-    for cand in [
-        recurso_dir / "free fire jugadas" / "Intro.mp4",
-        assets_path / "Recurso video Freefire" / "free fire jugadas" / "Intro.mp4",
-        assets_path / "free fire jugadas" / "Intro.mp4",
-        PROJECT_ROOT / "assets" / "Recurso video Freefire" / "free fire jugadas" / "Intro.mp4",
-    ]:
-        if cand.exists():
-            intro_path = str(cand.resolve())
-            break
-
+    # Channel Intro completely disabled per user instruction
     intro_event = None
-    if intro_path and total_dur >= 10.0:
-        intro_start = round(min(t_hook + 2.0, total_dur - 4.5), 2)
-        intro_dur = 2.8  # Punchy, high-retention logo intro
-        intro_event = {
-            "path": intro_path,
-            "start": intro_start,
-            "dur": intro_dur
-        }
-        print(f"🎬 Channel Intro programada: [{intro_start:.2f}s - {intro_start+intro_dur:.2f}s] ({Path(intro_path).name})")
 
     # State 2: Educational Explanation Clips
     state2_clips = []
@@ -707,17 +688,32 @@ def main():
 
     if len(audio_mix_inputs) > 1:
         mix_str = "".join(audio_mix_inputs)
+        # Master audio: amix with normalize=0 (prevents voice attenuation) + broadcast standard loudnorm (-14 LUFS)
         filter_parts.append(
-            f"{mix_str}amix=inputs={len(audio_mix_inputs)}:duration=first:dropout_transition=2[a_final]"
+            f"{mix_str}amix=inputs={len(audio_mix_inputs)}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
+        )
+        filter_parts.append(
+            f"[a_mixed]loudnorm=I=-14:LRA=7:TP=-1.5[a_final]"
         )
         audio_map = "[a_final]"
     else:
-        audio_map = "0:a"
+        filter_parts.append(
+            f"[0:a]loudnorm=I=-14:LRA=7:TP=-1.5[a_final]"
+        )
+        audio_map = "[a_final]"
 
     filter_complex = "\n".join(filter_parts)
 
+    fc_script_path = out_dir_path / f"dyn_fc_{int(time.time())}.txt"
+    try:
+        with open(fc_script_path, "w", encoding="utf-8") as f_fc:
+            f_fc.write(filter_complex)
+        cmd.extend(["-filter_complex_script", str(fc_script_path)])
+    except Exception:
+        cmd.extend(["-filter_complex", filter_complex])
+        fc_script_path = None
+
     cmd.extend([
-        "-filter_complex", filter_complex,
         "-map", "[v_final]",
         "-map", audio_map,
         "-c:v", "libx264",
@@ -736,7 +732,11 @@ def main():
 
     print(f"\n🚀 Rendering with FFmpeg: {out_file_path}")
     try:
-        subprocess.run(cmd, check=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if res.returncode != 0:
+            err_msg = res.stderr[-1000:] if res.stderr else "Error desconocido durante la ejecución de FFmpeg."
+            print(f"❌ Primary Render Error in FFmpeg:\n{err_msg}", file=sys.stderr)
+            sys.exit(1)
     finally:
         # ── CLEANUP TEMPORARY FILES ───────────────────────────────────────────
         if tmp_audio_out and os.path.exists(tmp_audio_out):
@@ -749,6 +749,11 @@ def main():
             try:
                 os.remove(spec_card_img)
                 print(f"🧹 Spec card temporal eliminada ({Path(spec_card_img).name})")
+            except Exception:
+                pass
+        if fc_script_path and os.path.exists(fc_script_path):
+            try:
+                os.remove(fc_script_path)
             except Exception:
                 pass
 

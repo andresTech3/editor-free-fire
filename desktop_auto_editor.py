@@ -1055,9 +1055,9 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         f"[0:a]volume=1.0,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_spliced];"
     )
 
-    # Background Music (covers total_output_dur at low level)
+    # Background Music (covers total_output_dur at balanced level)
     filter_parts.append(
-        f"[1:a]atrim=start=0:duration={total_output_dur:.2f},asetpts=PTS-STARTPTS,volume=0.08[bgm_quiet];"
+        f"[1:a]atrim=start=0:duration={total_output_dur:.2f},asetpts=PTS-STARTPTS,volume=0.07[bgm_quiet];"
     )
     filter_parts.append(f"[2:a]volume=0.35[whoosh];")
 
@@ -1071,7 +1071,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             delay_ms = int(v_out_t * 1000)
             lbl = f"sfx_vis_{v_i}"
             filter_parts.append(
-                f"[{sfx_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.6[{lbl}];"
+                f"[{sfx_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.4[{lbl}];"
             )
             mix_inputs.append(f"[{lbl}]")
 
@@ -1082,13 +1082,17 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         delay_ms = int(s_t * 1000)
         lbl = f"sfx_sem_{s_i}"
         filter_parts.append(
-            f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.45[{lbl}];"
+            f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.35[{lbl}];"
         )
         mix_inputs.append(f"[{lbl}]")
 
     mix_str = "".join(mix_inputs)
+    # Master audio: amix with normalize=0 (prevents voice attenuation) + broadcast standard loudnorm (-14 LUFS)
     filter_parts.append(
-        f"{mix_str}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=2[a_final]"
+        f"{mix_str}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
+    )
+    filter_parts.append(
+        f"[a_mixed]loudnorm=I=-14:LRA=7:TP=-1.5[a_final];"
     )
 
     filter_complex = "\n".join(filter_parts)
