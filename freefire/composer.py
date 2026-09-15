@@ -87,7 +87,7 @@ def _get_duration(path: str) -> float:
     import json
     cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return float(json.loads(r.stdout).get("format", {}).get("duration", 0))
     except Exception:
         return 0.0

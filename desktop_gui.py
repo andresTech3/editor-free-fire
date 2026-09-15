@@ -657,9 +657,13 @@ class FreeFireEditorApp(tk.Tk):
     def _on_error(self, err):
         self.btn_generate.config(state="normal", bg=RED, text="REINTENTAR  >>>")
         self.lbl_status.config(text="Error durante el renderizado.", fg="#EF4444")
-        # Safely convert to string and truncate for display
+        # Safely convert to string and show the most relevant part of the error
         err_str = str(err) if err is not None else "Error desconocido (sin mensaje)."
-        messagebox.showerror("Error de Render", f"No se pudo generar el video:\n\n{err_str[:600]}")
+        if len(err_str) > 1000:
+            display_err = "... [inicio omitido] ...\n\n" + err_str[-1000:]
+        else:
+            display_err = err_str
+        messagebox.showerror("Error de Render", f"No se pudo generar el video:\n\n{display_err}")
 
 
 if __name__ == "__main__":

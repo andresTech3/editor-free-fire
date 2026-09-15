@@ -165,7 +165,7 @@ def file_has_audio(file_path: str) -> bool:
             "-show_entries", "stream=codec_type",
             "-of", "csv=p=0", str(file_path)
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        res = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=5)
         return "audio" in res.stdout.lower()
     except Exception:
         return False
@@ -1112,7 +1112,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     ])
 
     print("🚀 Launching FFmpeg render command for 9:16 Short...")
-    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     if res.returncode != 0:
         print(f"❌ Primary Render Error in FFmpeg:\n{res.stderr[-1000:]}")
@@ -1123,7 +1123,7 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
             if arg == filter_complex:
                 cmd_nosubs[i] = fc_nosubs
                 break
-        res_ns = subprocess.run(cmd_nosubs, capture_output=True, text=True, encoding="utf-8")
+        res_ns = subprocess.run(cmd_nosubs, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res_ns.returncode != 0:
             print(f"❌ Fallback Render Error:\n{res_ns.stderr[-1000:]}")
             sys.exit(1)

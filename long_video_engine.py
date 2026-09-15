@@ -112,7 +112,7 @@ def file_has_audio(file_path: str) -> bool:
             "-show_entries", "stream=codec_type",
             "-of", "csv=p=0", str(file_path)
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        res = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=5)
         return "audio" in res.stdout.lower()
     except Exception:
         return False
@@ -1046,6 +1046,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         rem_dur = remotion_anim["duration"]
         filter_parts.append(
             f"[{remotion_in_idx}:v]setpts=PTS-STARTPTS+{rem_out_t:.3f}/TB,"
+            f"colorkey=0x000000:0.12:0.08,format=yuva420p,"
             f"scale=1920:1080:force_original_aspect_ratio=decrease,setsar=1,fps=60[rem_proc];"
         )
         filter_parts.append(
@@ -1187,7 +1188,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     ])
 
     print("🚀 Launching FFmpeg render command...")
-    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     if res.returncode != 0:
         print(f"❌ Primary Render Error in FFmpeg:\n{res.stderr[-1000:]}")
@@ -1198,9 +1199,10 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             if arg == filter_complex:
                 cmd_nosubs[i] = fc_nosubs
                 break
-        res_ns = subprocess.run(cmd_nosubs, capture_output=True, text=True, encoding="utf-8")
+        res_ns = subprocess.run(cmd_nosubs, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res_ns.returncode != 0:
             print(f"❌ Secondary Render Error:\n{res_ns.stderr[-1000:]}")
+            sys.exit(1)
 
     # ── CLEANUP TEMPORARY TRANSCRIPTIONS & INTERMEDIATE FILES ─────────────────
     try:
@@ -1221,8 +1223,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         print("═"*75)
         return str(final_output_path)
     else:
-        print(f"❌ Error: Render failed, output file not found at {final_output_path}")
-        return None
+        err_tail = res.stderr[-1000:] if ('res' in locals() and res.stderr) else "Error desconocido durante la ejecución de FFmpeg."
+        print(f"❌ Error: Render failed, output file not found at {final_output_path}\n{err_tail}", file=sys.stderr)
+        sys.exit(1)
 
 # ── CLI ENTRY POINT ──────────────────────────────────────────────────────────
 def main():

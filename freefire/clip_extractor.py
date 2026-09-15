@@ -305,7 +305,7 @@ def extract_event_clips(
             "-pix_fmt", "yuv420p",
             tmp_cut,
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res.returncode == 0 and os.path.exists(tmp_cut):
             cut_files.append(tmp_cut)
 
@@ -327,7 +327,7 @@ def extract_event_clips(
         "-pix_fmt", "yuv420p",
         output_path,
     ]
-    res_concat = subprocess.run(cmd_concat, capture_output=True, text=True, encoding="utf-8")
+    res_concat = subprocess.run(cmd_concat, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     # Cleanup
     for cut in cut_files + [concat_list]:

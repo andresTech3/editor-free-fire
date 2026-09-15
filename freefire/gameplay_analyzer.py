@@ -32,7 +32,7 @@ def get_video_duration(video_path: str) -> float:
         "-show_format", video_path,
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         data = json.loads(result.stdout)
         return float(data.get("format", {}).get("duration", 0))
     except Exception:
@@ -46,7 +46,7 @@ def get_video_info(video_path: str) -> dict:
         "-show_streams", "-show_format", video_path,
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         data = json.loads(result.stdout)
         video_stream = next(
             (s for s in data.get("streams", []) if s["codec_type"] == "video"), {}
