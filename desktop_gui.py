@@ -633,8 +633,13 @@ class FreeFireEditorApp(tk.Tk):
             if res.returncode == 0 and self.last_rendered_file.exists():
                 self.after(0, self._on_success)
             else:
-                err_msg = (res.stderr or "") + (res.stdout or "")
-                err_msg = err_msg.strip() or "El proceso termino sin mensaje de error."
+                err_parts = []
+                if res.stderr and res.stderr.strip():
+                    err_parts.append(f"❌ DETALLE DEL ERROR:\n{res.stderr.strip()[-1200:]}")
+                if res.stdout and res.stdout.strip():
+                    stdout_tail = "\n".join(res.stdout.strip().splitlines()[-12:])
+                    err_parts.append(f"📋 ÚLTIMAS LÍNEAS DEL REGISTRO:\n{stdout_tail}")
+                err_msg = "\n\n".join(err_parts) if err_parts else "El proceso terminó sin mensaje de error."
                 self.after(0, lambda m=err_msg: self._on_error(m))
         except Exception as e:
             self.after(0, lambda: self._on_error(str(e)))
@@ -657,10 +662,9 @@ class FreeFireEditorApp(tk.Tk):
     def _on_error(self, err):
         self.btn_generate.config(state="normal", bg=RED, text="REINTENTAR  >>>")
         self.lbl_status.config(text="Error durante el renderizado.", fg="#EF4444")
-        # Safely convert to string and show the most relevant part of the error
         err_str = str(err) if err is not None else "Error desconocido (sin mensaje)."
-        if len(err_str) > 1000:
-            display_err = "... [inicio omitido] ...\n\n" + err_str[-1000:]
+        if len(err_str) > 1400:
+            display_err = err_str[:1400] + "\n\n... [resto omitido] ..."
         else:
             display_err = err_str
         messagebox.showerror("Error de Render", f"No se pudo generar el video:\n\n{display_err}")

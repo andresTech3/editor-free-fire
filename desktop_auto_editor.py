@@ -1093,8 +1093,16 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
 
     filter_complex = "\n".join(filter_parts)
 
+    fc_script_path = target_out_dir / f"auto_fc_{int(time.time())}.txt"
+    try:
+        with open(fc_script_path, "w", encoding="utf-8") as f_fc:
+            f_fc.write(filter_complex)
+        cmd.extend(["-filter_complex_script", str(fc_script_path)])
+    except Exception:
+        cmd.extend(["-filter_complex", filter_complex])
+        fc_script_path = None
+
     cmd.extend([
-        "-filter_complex", filter_complex,
         "-map", "[v_final]",
         "-map", "[a_final]",
         "-c:v", "libx264",
@@ -1115,24 +1123,20 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     if res.returncode != 0:
-        print(f"❌ Primary Render Error in FFmpeg:\n{res.stderr[-1000:]}")
-        # Retry without subtitles if subtitle filter threw an error
-        cmd_nosubs = cmd.copy()
-        fc_nosubs = filter_complex.replace(f"[v_overlays]subtitles='{rel_sub}'[v_final];", "[v_overlays]null[v_final];")
-        for i, arg in enumerate(cmd_nosubs):
-            if arg == filter_complex:
-                cmd_nosubs[i] = fc_nosubs
-                break
-        res_ns = subprocess.run(cmd_nosubs, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        if res_ns.returncode != 0:
-            print(f"❌ Fallback Render Error:\n{res_ns.stderr[-1000:]}")
-            sys.exit(1)
+        err_msg = res.stderr[-1000:] if res.stderr else "Error desconocido durante la ejecución de FFmpeg."
+        print(f"❌ Primary Render Error in FFmpeg:\n{err_msg}", file=sys.stderr)
+        sys.exit(1)
 
     # ── CLEANUP TEMPORARY TRANSCRIPTIONS & INTERMEDIATE FILES ─────────────────
     try:
         if os.path.exists(tmp_ass):
             os.remove(tmp_ass)
             print(f"🧹 Subtítulos y transcripciones temporales eliminadas ({Path(tmp_ass).name})")
+    except Exception:
+        pass
+    try:
+        if fc_script_path and os.path.exists(fc_script_path):
+            os.remove(fc_script_path)
     except Exception:
         pass
 
