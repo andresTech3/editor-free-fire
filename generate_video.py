@@ -43,7 +43,8 @@ from core.dynamic_synthesis.scene_state_machine import (
 from core.orientation_helper import (
     get_video_orientation_filter,
     get_media_orientation_filter,
-    get_green_screen_crop_filter
+    get_green_screen_crop_filter,
+    file_has_audio
 )
 from core.asset_catalog import (
     SFX_CATALOG,
@@ -169,12 +170,34 @@ def main():
     print(f"   • State 4 ({state4_lbl}): {t_state4:.2f}s ➔ {total_dur:.2f}s  ({total_dur - t_state4:.2f}s)")
 
     # ── STEP 5: SAMPLE ASSETS FOR EACH STATE ──────────────────────────────────
-    # State 1: 3 PVP planes
+    # State 1: Kinetic Hook Gameplay (High-energy combat scene)
     hook_planes = []
-    for _ in range(3):
-        p_vid = sampler.sample_asset("pvp")
-        if p_vid:
-            hook_planes.append(sampler.slice_sub_clip(p_vid, min_dur=t_hook, max_dur=t_hook + 1.0))
+    p_vid = sampler.sample_asset("pvp")
+    if p_vid:
+        hook_planes.append(sampler.slice_sub_clip(p_vid, min_dur=t_hook, max_dur=t_hook + 1.0))
+
+    # Channel Intro (plays ~2s after the hook: "quiero que aparesca la intro pero unos 2s despues del hook")
+    intro_path = None
+    for cand in [
+        recurso_dir / "free fire jugadas" / "Intro.mp4",
+        assets_path / "Recurso video Freefire" / "free fire jugadas" / "Intro.mp4",
+        assets_path / "free fire jugadas" / "Intro.mp4",
+        PROJECT_ROOT / "assets" / "Recurso video Freefire" / "free fire jugadas" / "Intro.mp4",
+    ]:
+        if cand.exists():
+            intro_path = str(cand.resolve())
+            break
+
+    intro_event = None
+    if intro_path and total_dur >= 10.0:
+        intro_start = round(min(t_hook + 2.0, total_dur - 4.5), 2)
+        intro_dur = 2.8  # Punchy, high-retention logo intro
+        intro_event = {
+            "path": intro_path,
+            "start": intro_start,
+            "dur": intro_dur
+        }
+        print(f"🎬 Channel Intro programada: [{intro_start:.2f}s - {intro_start+intro_dur:.2f}s] ({Path(intro_path).name})")
 
     # State 2: Educational Explanation Clips
     state2_clips = []
@@ -213,11 +236,12 @@ def main():
     chosen_clips = [hp["path"] for hp in hook_planes] + [s2["path"] for s2 in state2_clips] + [s3["path"] for s3 in state3_clips]
     save_recent_clips_history(chosen_clips)
 
-    # State 2 & 3 Memes (snapped to nearest beat, guaranteed at least 2-3 memes)
+    # State 2 & 3 Memes (from PACK DE MEMES, full-frame 16:9, ZERO green screen)
+    min_meme_start = (intro_event["start"] + intro_event["dur"] + 0.5) if intro_event else (t_hook + 1.2)
     meme_events = []
     for trig in triggers.get("meme", []):
         t_trig = trig["time"]
-        if t_hook <= t_trig <= total_dur - 4.0:
+        if min_meme_start <= t_trig <= total_dur - 4.0:
             m_path = sampler.sample_asset("memes")
             if m_path:
                 t_snap = snap_to_nearest_beat(t_trig, beat_times)
@@ -227,18 +251,18 @@ def main():
                     "dur": 2.0
                 })
 
-    # Guarantee at least 2 to 3 memes distributed evenly across the short
+    # Guarantee at least 2 to 3 memes distributed evenly across the video
     target_meme_count = 3 if total_dur >= 24.0 else 2
     if len(meme_events) < target_meme_count and total_dur >= 8.0:
         if target_meme_count == 3:
             fallback_anchors = [
-                t_hook + (t_proof - t_hook) * 0.45,
+                max(min_meme_start, t_hook + (t_proof - t_hook) * 0.45),
                 t_proof + (t_state4 - t_proof) * 0.35,
                 t_proof + (t_state4 - t_proof) * 0.75
             ]
         else:
             fallback_anchors = [
-                t_hook + (t_proof - t_hook) * 0.5,
+                max(min_meme_start, t_hook + (t_proof - t_hook) * 0.5),
                 t_proof + (t_state4 - t_proof) * 0.5
             ]
 
@@ -247,7 +271,9 @@ def main():
                 break
             if fa >= total_dur - 3.0:
                 continue
-            if any(abs(m["start"] - fa) < 4.0 for m in meme_events):
+            if any(abs(m["start"] - fa) < 3.5 for m in meme_events):
+                continue
+            if intro_event and (intro_event["start"] - 0.5 <= fa <= intro_event["start"] + intro_event["dur"] + 0.5):
                 continue
             m_path = sampler.sample_asset("memes")
             if m_path:
@@ -259,7 +285,7 @@ def main():
                 })
 
     meme_events.sort(key=lambda x: x["start"])
-    print(f"🤡 Scheduled {len(meme_events)} Green-Screen Meme Reactions in Timeline:")
+    print(f"🤡 Scheduled {len(meme_events)} Full-Frame 16:9 Reaction Memes (PACK DE MEMES - No Green Screen):")
     for me in meme_events:
         print(f"   • [{me['start']:.2f}s - {me['start']+me['dur']:.2f}s] {Path(me['path']).name}")
 
@@ -338,15 +364,10 @@ def main():
     if is_sens_topic:
         spec_card_img = render_dynamic_spec_card_hud(out_w, out_h, duration=total_dur - t_state4)
     else:
-        # Search for CTA Like & Subscribe badge
-        cta_cands = [
-            recurso_dir / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4",
-            recurso_dir / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACION DE LIKE Y SUSCRIBETE 1.mp4",
-            assets_path / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4",
-        ]
-        for c_cand in cta_cands:
+        # Search for CTA Like & Subscribe badge (ONLY element permitted with green screen)
+        for c_cand in list(recurso_dir.rglob("*SUSCRIBETE 1*.mp4")) + list(assets_path.rglob("*SUSCRIBETE 1*.mp4")):
             if c_cand.exists():
-                cta_badge_path = str(c_cand)
+                cta_badge_path = str(c_cand.resolve())
                 break
 
     # Scan contextual SFX matching spoken words with semantic arguments
@@ -458,6 +479,13 @@ def main():
         s1_indices.append(input_idx)
         input_idx += 1
 
+    # Channel Intro input (if available)
+    intro_in_idx = None
+    if intro_event is not None:
+        cmd.extend(["-ss", "0", "-t", f"{intro_event['dur']:.2f}", "-i", intro_event["path"]])
+        intro_in_idx = input_idx
+        input_idx += 1
+
     # State 2 inputs
     s2_indices = []
     for s2 in state2_clips:
@@ -472,7 +500,7 @@ def main():
         s3_indices.append((input_idx, s3))
         input_idx += 1
 
-    # Meme inputs
+    # Meme inputs (Full-frame 16:9 reactions from PACK DE MEMES, NO green screen)
     meme_indices = []
     for me in meme_events:
         cmd.extend(["-ss", "0", "-t", f"{me['dur']:.2f}", "-i", me["path"]])
@@ -486,7 +514,7 @@ def main():
         vis_indices.append((input_idx, ve))
         input_idx += 1
 
-    # State 4 input: Spec card (if sensitivity topic) or CTA badge
+    # State 4 input: Spec card (if sensitivity topic) or CTA badge (Green screen ONLY here)
     spec_in_idx = None
     cta_in_idx = None
     if is_sens_topic and spec_card_img:
@@ -524,54 +552,15 @@ def main():
 
     # Build Filter Complex
     filter_parts = []
-
-    # 1. State 1 Composition (3D Kinetic Hook)
-    pw = int(out_w * 0.48)
-    ph = int(out_h * 0.65)
-    cw = int(out_w * 0.65)
-    ch = int(out_h * 0.75)
-
     color_filter_clean = "eq=contrast=1.12:saturation=1.28:brightness=0.02:gamma=1.0"
 
-    if len(s1_indices) >= 3:
-        p_l, p_c, p_r = s1_indices[0], s1_indices[1], s1_indices[2]
-        filter_parts.append(
-            f"[{p_l}:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,crop={pw}:{ph},"
-            f"perspective=x0=0:y0=20:x1={pw}:y1=70:x2=0:y2={ph-20}:x3={pw}:y3={ph-70}[h_left];"
-        )
-        filter_parts.append(
-            f"[{p_c}:v]scale={cw}:{ch}:force_original_aspect_ratio=increase,crop={cw}:{ch}[h_center];"
-        )
-        filter_parts.append(
-            f"[{p_r}:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,crop={pw}:{ph},"
-            f"perspective=x0=0:y0=70:x1={pw}:y1=20:x2=0:y2={ph-70}:x3={pw}:y3={ph-20}[h_right];"
-        )
-        filter_parts.append(
-            f"color=c=black:s={out_w}x{out_h}:d={t_hook:.2f}[h_bg];"
-        )
-        filter_parts.append(
-            f"[h_bg][h_left]overlay=x=20:y=(H-h)/2[h_cmp1];"
-        )
-        filter_parts.append(
-            f"[h_cmp1][h_right]overlay=x=W-w-20:y=(H-h)/2[h_cmp2];"
-        )
-        filter_parts.append(
-            f"[h_center]pad=iw+8:ih+8:4:4:color=gold@0.8[h_border];"
-        )
-        filter_parts.append(
-            f"[h_cmp2][h_border]overlay=x=(W-w)/2:y=(H-h)/2[h_3d];"
-        )
-        filter_parts.append(
-            f"[h_3d]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,"
-            f"scale=eval=frame:w='iw*(1.0+0.35*pow(t/{t_hook:.2f},2))':h='ih*(1.0+0.35*pow(t/{t_hook:.2f},2))',"
-            f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2,{color_filter_clean},setsar=1,fps=60[v_state1];"
-        )
-    else:
-        filter_parts.append(
-            f"[{s1_indices[0]}:v]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,"
-            f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
-            f"{color_filter_clean},setsar=1,fps=60[v_state1];"
-        )
+    # 1. State 1 Composition (Clean Kinetic Hook with dynamic camera punch, NO perspective skew/voleado distortion)
+    filter_parts.append(
+        f"[{s1_indices[0]}:v]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,"
+        f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
+        f"scale=eval=frame:w='iw*(1.0+0.12*pow(sin(3.14159*t/{t_hook:.2f}),2))':h='ih*(1.0+0.12*pow(sin(3.14159*t/{t_hook:.2f}),2))',"
+        f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2,{color_filter_clean},setsar=1,fps=60[v_state1];"
+    )
 
     # 2. State 2 & State 3 Clips (Fluid Gameplay, Uniform 60 FPS, Luminous Color Grade)
     concat_list = ["[v_state1]"]
@@ -579,9 +568,8 @@ def main():
     for i_num, (in_i, s2) in enumerate(s2_indices):
         lbl = f"v_s2_{i_num}"
         dur_s2 = s2["timeline_dur"]
-        rot = get_video_orientation_filter(s2["path"])
         filter_parts.append(
-            f"[{in_i}:v]trim=duration={dur_s2:.2f},setpts=PTS-STARTPTS,{rot}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+            f"[{in_i}:v]trim=duration={dur_s2:.2f},setpts=PTS-STARTPTS,scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
             f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,{color_filter_clean},setsar=1,fps=60[{lbl}];"
         )
         concat_list.append(f"[{lbl}]")
@@ -589,9 +577,8 @@ def main():
     for i_num, (in_i, s3) in enumerate(s3_indices):
         lbl = f"v_s3_{i_num}"
         dur_s3 = s3["timeline_dur"]
-        rot = get_video_orientation_filter(s3["path"])
         filter_parts.append(
-            f"[{in_i}:v]trim=duration={dur_s3:.2f},setpts=PTS-STARTPTS,{rot}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+            f"[{in_i}:v]trim=duration={dur_s3:.2f},setpts=PTS-STARTPTS,scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
             f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,{color_filter_clean},setsar=1,fps=60[{lbl}];"
         )
         concat_list.append(f"[{lbl}]")
@@ -601,7 +588,20 @@ def main():
 
     curr_v = "v_base"
 
-    # 3. Overlay Contextual Visual Events (Diamonds, Weapons, Web Guide, Avatar)
+    # 3. Channel Intro Overlay (plays ~2s after hook)
+    if intro_in_idx is not None and intro_event is not None:
+        i_st = intro_event["start"]
+        i_du = intro_event["dur"]
+        filter_parts.append(
+            f"[{intro_in_idx}:v]setpts=PTS-STARTPTS+{i_st:.2f}/TB,"
+            f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},setsar=1,fps=60[intro_scaled];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][intro_scaled]overlay=enable='between(t,{i_st:.2f},{i_st+i_du:.2f})':x=0:y=0:eof_action=pass[v_with_intro];"
+        )
+        curr_v = "v_with_intro"
+
+    # 4. Overlay Contextual Visual Events (Diamonds, Weapons, Web Guide, Avatar)
     for v_i, (v_in, ve) in enumerate(vis_indices):
         next_v = f"v_vis_{v_i}"
         v_st = ve["start"]
@@ -615,24 +615,22 @@ def main():
         )
         curr_v = next_v
 
-    # 4. Overlay Silent Green-Screen Memes (Upper area, rhythmically synced to cadence)
+    # 5. Overlay Full-Screen 16:9 Reaction Memes (PACK DE MEMES - Zero Green Screen)
     for m_i, (m_in, me) in enumerate(meme_indices):
         next_v = f"v_meme_{m_i}"
         m_t = me["start"]
         m_dur = me["dur"]
-        m_path = me["path"]
-        crop_filt = get_green_screen_crop_filter(m_path)
-        m_orient = get_video_orientation_filter(m_path)
         filter_parts.append(
-            f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,{m_orient}{crop_filt}"
-            f"scale=800:1400:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[m_proc_{m_i}];"
+            f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,"
+            f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
+            f"setsar=1,fps=60[m_proc_{m_i}];"
         )
         filter_parts.append(
-            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=(W-w)/2:y=240:eof_action=pass[{next_v}];"
+            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=0:y=0:eof_action=pass[{next_v}];"
         )
         curr_v = next_v
 
-    # 5. State 4 Overlay: Sensitivity Spec Card OR Action Climax CTA Badge
+    # 6. State 4 Overlay: Sensitivity Spec Card OR Action Climax CTA Badge (Green Screen ONLY here)
     if is_sens_topic and spec_in_idx is not None:
         card_target_y = int(out_h * 0.62)
         u_expr = f"min(1.0,max(0.0,(t-{t_state4:.2f})/0.45))"
@@ -650,7 +648,7 @@ def main():
         cta_y = int(out_h * 0.78)
         filter_parts.append(
             f"[{cta_in_idx}:v]setpts=PTS-STARTPTS+{t_state4:.2f}/TB,"
-            f"scale=450:260:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_scaled];"
+            f"scale=500:280:force_original_aspect_ratio=decrease,chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[cta_scaled];"
         )
         filter_parts.append(
             f"[{curr_v}][cta_scaled]overlay=enable='between(t,{t_state4:.2f},{min(t_state4+4.0, total_dur):.2f})':x=(W-w)/2:y={cta_y}:eof_action=pass[v_prefinal];"
@@ -658,11 +656,13 @@ def main():
         curr_v = "v_prefinal"
 
     # Dynamic Remotion Overlay (TopicBadge, DiamondAlert, KillCard, HUDSensibilidad)
+    # Applied with colorkey to completely eliminate any solid black background box
     if remotion_in_idx is not None:
         rem_t = remotion_anim["time"]
         rem_dur = remotion_anim["duration"]
         filter_parts.append(
             f"[{remotion_in_idx}:v]setpts=PTS-STARTPTS+{rem_t:.3f}/TB,"
+            f"colorkey=0x000000:0.12:0.08,format=yuva420p,"
             f"scale={out_w}:{out_h}:force_original_aspect_ratio=decrease,setsar=1,fps=60[rem_proc];"
         )
         filter_parts.append(
@@ -670,25 +670,42 @@ def main():
         )
         curr_v = "v_rem"
 
-    # Smooth finish (no freezing, no white flash, subtle 0.5s fade out to black at the end)
+    # Smooth finish (subtle 0.5s fade out to black at the end)
     fade_start = max(0.0, total_dur - 0.5)
     filter_parts.append(
         f"[{curr_v}]fade=t=out:st={fade_start:.2f}:d=0.5:color=black[v_final];"
     )
 
-    # Audio Mixing: Contextual SFX with ducked master audio
-    if sfx_input_info:
-        audio_mix_inputs = ["[0:a]"]
-        for s_i, s_item in enumerate(sfx_input_info):
-            s_idx = s_item["idx"]
-            s_t = s_item["event"]["time"]
-            delay_ms = int(s_t * 1000)
-            lbl = f"sfx_sem_{s_i}"
+    # Audio Mixing: Contextual SFX, Channel Intro Audio, and Meme Reactions with ducked master audio
+    audio_mix_inputs = ["[0:a]"]
+    for s_i, s_item in enumerate(sfx_input_info):
+        s_idx = s_item["idx"]
+        s_t = s_item["event"]["time"]
+        delay_ms = int(s_t * 1000)
+        lbl = f"sfx_sem_{s_i}"
+        filter_parts.append(
+            f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.45[{lbl}];"
+        )
+        audio_mix_inputs.append(f"[{lbl}]")
+
+    if intro_in_idx is not None and intro_event is not None:
+        if file_has_audio(intro_event["path"]):
+            delay_ms = int(intro_event["start"] * 1000)
             filter_parts.append(
-                f"[{s_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.45[{lbl}];"
+                f"[{intro_in_idx}:a]adelay={delay_ms}|{delay_ms},volume=0.85[a_intro];"
+            )
+            audio_mix_inputs.append("[a_intro]")
+
+    for m_i, (m_in, me) in enumerate(meme_indices):
+        if file_has_audio(me["path"]):
+            delay_ms = int(me["start"] * 1000)
+            lbl = f"a_meme_{m_i}"
+            filter_parts.append(
+                f"[{m_in}:a]adelay={delay_ms}|{delay_ms},volume=0.85[{lbl}];"
             )
             audio_mix_inputs.append(f"[{lbl}]")
 
+    if len(audio_mix_inputs) > 1:
         mix_str = "".join(audio_mix_inputs)
         filter_parts.append(
             f"{mix_str}amix=inputs={len(audio_mix_inputs)}:duration=first:dropout_transition=2[a_final]"

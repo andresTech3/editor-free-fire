@@ -65,15 +65,29 @@ class StochasticAssetSampler:
         if not jugadas_dir.exists():
             jugadas_dir = self.root / "gameplay"
 
+        EXCLUDE_FILENAMES = {
+            "intro.mp4", "img_1356.mp4", "img_1366.mp4", "emotes.mp4",
+            "img_1326.mov", "img_1327.mov", "img_1328.mov", "img_1329.mov",
+            "img_1330.mov", "img_1331.mov", "img_1332.mov", "img_1333.mov",
+            "img_1334.mov", "img_1335.mov", "img_1336.mov", "img_1355.mp4",
+            "img_1372.mp4"
+        }
+
+        from core.orientation_helper import is_upright_portrait_video
+
+        seen_gameplays = set()
         if jugadas_dir.exists():
             for ext in ["*.mov", "*.mp4", "*.MOV", "*.MP4", "*.mkv"]:
                 for f in jugadas_dir.rglob(ext):
                     name_lower = f.name.lower()
-                    if "intro" in name_lower:
-                        continue
-                    if any(ex in name_lower for ex in ["intro", "img_1356", "img_1366"]):
+                    if name_lower in EXCLUDE_FILENAMES:
                         continue
                     p_str = str(f.resolve())
+                    if name_lower in seen_gameplays:
+                        continue
+                    if is_upright_portrait_video(p_str):
+                        continue
+                    seen_gameplays.add(name_lower)
                     # Check training keywords vs pvp
                     if any(kw in name_lower for kw in ["entrenamiento", "training", "tiro", "sala", "1364"]):
                         self.pools["training"].append(p_str)
@@ -85,18 +99,31 @@ class StochasticAssetSampler:
         self.pools["pvp"] = prioritize_fresh_gameplay_videos(self.pools["pvp"])
         self.pools["training"] = prioritize_fresh_gameplay_videos(self.pools["training"])
 
-        # Fallback if training is empty
-        if not self.pools["training"] and self.pools["pvp"]:
-            self.pools["training"] = list(self.pools["pvp"])
-        elif not self.pools["pvp"] and self.pools["training"]:
-            self.pools["pvp"] = list(self.pools["training"])
+        # Guarantee rich variety in training: combine with pvp so both pools have all 19 unique clips
+        if len(self.pools["training"]) < 5 and self.pools["pvp"]:
+            all_gameplays = list(self.pools["pvp"])
+            for t in self.pools["training"]:
+                if t not in all_gameplays:
+                    all_gameplays.append(t)
+            self.pools["training"] = all_gameplays
+            self.pools["pvp"] = list(all_gameplays)
 
-        # 2. Memes Pool (Green screen memes prioritized for Shorts)
-        memes_green_dir = recurso_dir / "PACK MEMES PANTALLA VERDE 1 (manuDT)"
-        if memes_green_dir.exists():
-            for ext in ["*.mp4", "*.mov", "*.MP4", "*.MOV"]:
-                for f in memes_green_dir.rglob(ext):
-                    self.pools["memes"].append(str(f.resolve()))
+        # 2. Memes Pool (Full 16:9 Reaction Memes - NO GREEN SCREEN)
+        seen_memes = set()
+        memes_pack_dirs = [
+            recurso_dir / "PACK DE MEMES",
+            self.root / "PACK DE MEMES",
+            self.root / "assets" / "Recurso video Freefire" / "PACK DE MEMES",
+        ]
+        for mpd in memes_pack_dirs:
+            if mpd.exists():
+                for ext in ["*.mp4", "*.mov", "*.MP4", "*.MOV"]:
+                    for f in mpd.rglob(ext):
+                        if not f.name.startswith(".") and f.name.lower() not in seen_memes:
+                            seen_memes.add(f.name.lower())
+                            self.pools["memes"].append(str(f.resolve()))
+                if self.pools["memes"]:
+                    break
 
         # 3. Overlays Pool (Sensitivity card, book guide, diamonds, avatars, etc.)
         img_dir = recurso_dir / "Imagenes"
@@ -108,14 +135,14 @@ class StochasticAssetSampler:
         print(f"📦 [Stochastic Sampler] Discovered Pools:")
         print(f"   • PVP Gameplay Clips:      {len(self.pools['pvp'])}")
         print(f"   • Training Gameplay Clips: {len(self.pools['training'])}")
-        print(f"   • Green Screen Memes:      {len(self.pools['memes'])}")
+        print(f"   • Full-Frame Pack Memes:   {len(self.pools['memes'])}")
         print(f"   • Contextual Overlays:     {len(self.pools['overlays'])}")
 
     def sample_asset(self, pool_name: str) -> str:
         """
-        Samples an asset from pool_name without repetition:
+        Samples an asset from pool_name strictly without repetition:
         P(A_i) = 0 if A_i in S_used
-        Resets S_used when |S_used| >= 0.8 * |S_pool|
+        Resets S_used only when all assets in the pool have been exhausted.
         """
         pool = self.pools.get(pool_name, [])
         if not pool:
@@ -124,8 +151,8 @@ class StochasticAssetSampler:
         used = self.used_state[pool_name]
         available = [a for a in pool if a not in used]
 
-        if not available or (len(used) >= 0.8 * len(pool)):
-            # Reset pool state
+        if not available:
+            # Reset pool state only when all have been shown
             self.used_state[pool_name].clear()
             available = list(pool)
 
