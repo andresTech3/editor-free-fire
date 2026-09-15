@@ -428,6 +428,61 @@ class SemanticDirector:
             # Re-sort memes chronologically
             meme_events.sort(key=lambda x: x["time"])
 
+        # ── GUARANTEED CONTEXTUAL MEMES IN LONG VIDEOS (16:9) ─────────────────
+        # User requirement: "y no el estas agregando los memes quiero que le agreges"
+        # Ensure long videos ALWAYS have 2 to 5 memes alternating pack and green screen
+        if not is_short and len(meme_events) < max_memes and total_audio_dur >= 14.0:
+            if total_audio_dur >= 90.0:
+                target_count = 5
+            elif total_audio_dur >= 50.0:
+                target_count = 4
+            elif total_audio_dur >= 28.0:
+                target_count = 3
+            else:
+                target_count = 2
+
+            step = (total_audio_dur - 10.0) / (target_count + 1)
+            candidate_times = [10.0 + (i + 1) * step for i in range(target_count)]
+
+            fallback_cats = ["god_mode", "laugh", "shock", "thinking", "subscribe", "victory", "wtf"]
+            cat_idx = 0
+            for ct in candidate_times:
+                if len(meme_events) >= target_count:
+                    break
+                if any(abs(m["time"] - ct) < 10.0 for m in meme_events):
+                    continue
+                if any(v["time"] - 1.5 <= ct <= (v["time"] + v["duration"] + 1.5) for v in visual_events):
+                    continue
+
+                f_cat = fallback_cats[cat_idx % len(fallback_cats)]
+                cat_idx += 1
+
+                # Alternate between 16:9 PACK DE MEMES and Green Screen Memes
+                use_pack = (len(meme_events) % 2 == 0)
+                m_path = None
+                is_green = False
+                if use_pack:
+                    m_path = self._find_best_pack_meme_for_context(f_cat, f_cat, used_memes)
+                    if m_path:
+                        is_green = False
+                if not m_path:
+                    m_path = self._find_green_meme_for_context(f_cat, used_memes)
+                    is_green = True if m_path else False
+
+                if m_path:
+                    used_memes.add(m_path)
+                    dur = 2.0 if is_green else 1.8
+                    meme_events.append({
+                        "time": round(ct, 2),
+                        "duration": dur,
+                        "category": f_cat,
+                        "matched_phrase": f"[Reacción Contextual: {f_cat}]",
+                        "meme_path": m_path,
+                        "is_green_screen": is_green
+                    })
+
+            meme_events.sort(key=lambda x: x["time"])
+
         # ── 3. SCAN SFX WITH ARGUMENTS TIED TO TRANSCRIPT ─────────────────────
         sfx_events = []
         last_sfx_t = -5.0

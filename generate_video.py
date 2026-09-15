@@ -503,7 +503,10 @@ def main():
     if remotion_anim and os.path.exists(remotion_anim.get("path", "")):
         rem_p = remotion_anim["path"]
         rem_dur = remotion_anim["duration"]
-        cmd.extend(["-ss", "0", "-t", f"{rem_dur:.2f}", "-i", rem_p])
+        if str(rem_p).lower().endswith(".webm"):
+            cmd.extend(["-c:v", "libvpx", "-ss", "0", "-t", f"{rem_dur:.2f}", "-i", str(rem_p)])
+        else:
+            cmd.extend(["-ss", "0", "-t", f"{rem_dur:.2f}", "-i", str(rem_p)])
         remotion_in_idx = input_idx
         input_idx += 1
 

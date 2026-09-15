@@ -407,28 +407,81 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             else:
                 hook_duration = round(max(3.5, seg0_end), 2)
 
+    # User requirement: "quiero que aparesca la intro pero unos 2s despues del hook"
+    # Hook plays, then ~2.0s of continuation gameplay/speech, THEN channel intro!
+    intro_insert_time = round(min(hook_duration + 2.0, total_vo_dur - 4.0), 2) if (has_intro and total_vo_dur > 8.0) else hook_duration
+
     # Sort memes chronologically by cut time in voiceover
     raw_meme_events = sorted(raw_meme_events, key=lambda x: x["time"])
 
-    # Sanitize memes to ensure clean gaps (memes only AFTER the hook, spaced cleanly)
+    # Sanitize memes to ensure clean gaps (memes only AFTER the intro, spaced cleanly)
     meme_events = []
-    last_cut = hook_duration
+    last_cut = intro_insert_time if has_intro else hook_duration
     for m in raw_meme_events:
         t = m["time"]
-        if t >= hook_duration + 1.2 and t >= last_cut + 2.0 and t < total_vo_dur - 0.5:
+        min_start = (intro_insert_time + 2.0) if has_intro else (hook_duration + 1.2)
+        if t >= min_start and t >= last_cut + 3.0 and t < total_vo_dur - 1.0:
             meme_events.append(m)
             last_cut = t
+
+    # User requirement: "y no el estas agregando los memes quiero que le agreges"
+    # If no memes matched from speech keywords or they were filtered out, GUARANTEE 2 to 4 memes!
+    if len(meme_events) == 0 and total_vo_dur >= 15.0:
+        target_meme_cnt = 4 if total_vo_dur >= 60.0 else (3 if total_vo_dur >= 35.0 else 2)
+        meme_start_t = (intro_insert_time + 3.0) if has_intro else 8.0
+        avail_span = max(5.0, total_vo_dur - meme_start_t - 2.0)
+        step = avail_span / (target_meme_cnt + 1)
+
+        pack_files = list(MEMES_PACK_DIR.glob("*.mp4"))
+        green_files = list(MEMES_GREEN_DIR.rglob("*.mp4"))
+
+        used_paths = set()
+        for m_idx in range(target_meme_cnt):
+            m_t = round(meme_start_t + (m_idx + 1) * step, 2)
+            if any(v["time"] - 1.5 <= m_t <= (v["time"] + v.get("duration", 2.5) + 1.5) for v in raw_visual_events):
+                m_t += 2.0
+            if m_t >= total_vo_dur - 1.5:
+                continue
+
+            use_pack = (m_idx % 2 == 0)
+            m_path = None
+            is_green = False
+            if use_pack and pack_files:
+                choices = [f for f in pack_files if str(f) not in used_paths] or pack_files
+                m_path = random.choice(choices)
+                is_green = False
+            elif green_files:
+                choices = [f for f in green_files if str(f) not in used_paths] or green_files
+                m_path = random.choice(choices)
+                is_green = True
+            elif pack_files:
+                m_path = random.choice(pack_files)
+                is_green = False
+
+            if m_path:
+                used_paths.add(str(m_path))
+                dur = 2.0 if is_green else 1.8
+                meme_events.append({
+                    "time": m_t,
+                    "duration": dur,
+                    "category": "reaction",
+                    "matched_phrase": "[Guaranteed 16:9 Contextual Reaction]",
+                    "meme_path": str(m_path),
+                    "is_green_screen": is_green
+                })
+
+        meme_events.sort(key=lambda x: x["time"])
 
     # ── TIMELINE SHIFT CALCULATIONS ─────────────────────────────────────────
     cum_meme_time = sum(m["duration"] for m in meme_events)
     for i, m in enumerate(meme_events):
-        m["out_time"] = m["time"] + (intro_dur if has_intro and m["time"] >= hook_duration else 0.0) + sum(prev["duration"] for prev in meme_events[:i])
+        m["out_time"] = m["time"] + (intro_dur if has_intro and m["time"] >= intro_insert_time else 0.0) + sum(prev["duration"] for prev in meme_events[:i])
         m["out_end"] = m["out_time"] + m["duration"]
 
     def map_vo_time_to_output(t: float) -> float:
         """Maps an original voiceover timestamp to the shifted output video timeline (incorporating intro and meme pauses)."""
         shift = 0.0
-        if has_intro and t >= hook_duration:
+        if has_intro and t >= intro_insert_time:
             shift += intro_dur
         for m in meme_events:
             if m["time"] < t:
@@ -446,9 +499,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         v_copy["out_end"] = v_out_st + v["duration"]
         visual_events.append(v_copy)
 
-    print(f"⏱️ Timeline Architecture: Voiceover = {total_vo_dur:.2f}s | Hook = {hook_duration:.2f}s | Intro = {intro_dur:.2f}s | Memes = {cum_meme_time:.2f}s | Total Video = {total_output_dur:.2f}s")
+    print(f"⏱️ Timeline Architecture: Voiceover = {total_vo_dur:.2f}s | Hook = {hook_duration:.2f}s | Intro Insert = {intro_insert_time:.2f}s | Intro = {intro_dur:.2f}s | Memes = {cum_meme_time:.2f}s | Total Video = {total_output_dur:.2f}s")
     if has_intro:
-        print(f"🌟 Complete Channel Intro: [{hook_duration:.2f}s - {hook_duration + intro_dur:.2f}s] ({intro_dur:.2f}s) ➔ {intro_file_path.name}")
+        print(f"🌟 Complete Channel Intro: [{intro_insert_time:.2f}s - {intro_insert_time + intro_dur:.2f}s] ({intro_dur:.2f}s) ➔ {intro_file_path.name}")
     print(f"🤡 Contextual Memes ({len(meme_events)} scheduled with Audio Hard-Cut):")
     for m in meme_events:
         print(f"   • Voice cut at {m['time']:.2f}s ➔ Video output [{m['out_time']:.2f}s - {m['out_end']:.2f}s] ({m['duration']:.2f}s) | {os.path.basename(m['meme_path'])}")
@@ -524,11 +577,11 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     used_ranges = {str(g): [] for g in gameplay_files}
     idx = 0
 
-    # ── A. Hook Segments (Covering PRECISELY hook_duration before Intro) ───────
+    # ── A. Hook Segments (Covering PRECISELY intro_insert_time before Intro) ──
     hook_segments = []
     if has_intro:
         current_hook_dur = 0.0
-        while current_hook_dur < hook_duration - 0.05:
+        while current_hook_dur < intro_insert_time - 0.05:
             gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
             gpath = str(gfile)
             idx += 1
@@ -541,7 +594,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
                 continue
             safe_end = gdur if gdur <= 2.5 else max(1.0, gdur - 1.0)
 
-            needed_dur = round(hook_duration - current_hook_dur, 2)
+            needed_dur = round(intro_insert_time - current_hook_dur, 2)
             tl_dur = min(needed_dur, round(random.uniform(1.8, 2.6), 2))
             if needed_dur - tl_dur < 1.0:
                 tl_dur = needed_dur
@@ -579,9 +632,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
             })
             current_hook_dur += tl_dur
 
-        # Ensure hook segments sum up to PRECISELY hook_duration
+        # Ensure hook segments sum up to PRECISELY intro_insert_time
         if hook_segments:
-            discrepancy = round(hook_duration - sum(s["timeline_dur"] for s in hook_segments), 2)
+            discrepancy = round(intro_insert_time - sum(s["timeline_dur"] for s in hook_segments), 2)
             if discrepancy != 0:
                 hook_segments[-1]["timeline_dur"] = round(hook_segments[-1]["timeline_dur"] + discrepancy, 2)
                 hook_segments[-1]["dur"] = round(hook_segments[-1]["timeline_dur"] * hook_segments[-1]["speed"], 2)
@@ -589,7 +642,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     # ── B. Post-Intro B-Roll Segments ──────────────────────────────────────
     post_intro_segments = []
     current_post_broll = 0.0
-    target_post_broll = total_output_dur - hook_duration - (intro_dur if has_intro else 0.0) + 5.0
+    target_post_broll = total_output_dur - (intro_insert_time if has_intro else 0.0) - (intro_dur if has_intro else 0.0) + 5.0
 
     while current_post_broll < target_post_broll:
         gfile = shuffled_gameplays[(idx + _start_offset) % len(shuffled_gameplays)]
@@ -679,7 +732,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     final_output_path = target_out_dir / out_name
 
     tmp_ass = str(PROJECT_ROOT / "subtitles_temp.ass")
-    create_ass_subtitles(vo_timeline, tmp_ass, transcribed_segments=transcribed_segments, meme_events=meme_events, hook_duration=hook_duration, intro_duration=intro_dur)
+    create_ass_subtitles(vo_timeline, tmp_ass, transcribed_segments=transcribed_segments, meme_events=meme_events, hook_duration=intro_insert_time, intro_duration=intro_dur)
 
     # 7. Build FFmpeg Filter Complex
     bgm_track = custom_bgm if (custom_bgm and os.path.exists(custom_bgm)) else None
@@ -698,41 +751,53 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
 
     cmd = ["ffmpeg", "-y"]
 
+    input_idx = 0
+
     # Input 0: Voiceover Audio
     cmd.extend(["-i", audio_path])
+    input_idx += 1
 
     # Input 1: BGM Audio
     if bgm_track and os.path.exists(bgm_track):
         cmd.extend(["-stream_loop", "-1", "-i", bgm_track])
     else:
         cmd.extend(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"])
+    input_idx += 1
 
     # Input 2: SFX Whoosh
     if sfx_whoosh.exists():
         cmd.extend(["-i", str(sfx_whoosh)])
     else:
         cmd.extend(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"])
+    input_idx += 1
 
-    # Input 3: Green Screen Like & Subscribe Badge
-    cta_badge_path = MEMES_GREEN_DIR / "PACK MEMES PANTALLA VERDE 1 (manuDT)" / "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4"
-    if not cta_badge_path.exists():
-        cta_badge_path = MEMES_GREEN_DIR / "ANIMACIÓN DE LIKE Y SUSCRIBETE 1.mp4"
+    # Input (Optional): Green Screen Like & Subscribe Badge (Dynamic lookup, zero black box fallback)
+    cta_badge_path = None
+    if MEMES_GREEN_DIR.exists():
+        for p in MEMES_GREEN_DIR.rglob("*.mp4"):
+            if "like" in p.name.lower() and "suscrib" in p.name.lower():
+                cta_badge_path = p
+                break
+        if not cta_badge_path:
+            for p in MEMES_GREEN_DIR.rglob("*.mp4"):
+                if "like" in p.name.lower():
+                    cta_badge_path = p
+                    break
 
-    if cta_badge_path.exists():
+    cta_in_idx = None
+    if cta_badge_path and cta_badge_path.exists():
         cmd.extend(["-ss", "0", "-t", "4", "-i", str(cta_badge_path)])
-    else:
-        cmd.extend(["-f", "lavfi", "-i", "color=c=black@0.0:s=1920x1080:d=1"])
+        cta_in_idx = input_idx
+        input_idx += 1
 
-    input_idx = 4
-
-    # Input 4 (Optional): Channel Intro Video & Audio
+    # Input (Optional): Channel Intro Video & Audio
     intro_input_idx = None
     if has_intro and intro_file_path.exists():
         cmd.extend(["-ss", "0", "-t", f"{intro_dur:.2f}", "-i", str(intro_file_path)])
         intro_input_idx = input_idx
         input_idx += 1
 
-    # Inputs 4+ (or 5+): B-roll gameplay clips
+    # Inputs: B-roll gameplay clips
     broll_input_indices = []
     for seg in broll_segments:
         st = seg["start"]
@@ -793,7 +858,11 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     if remotion_anim and os.path.exists(remotion_anim.get("path", "")):
         rem_p = remotion_anim["path"]
         rem_dur = remotion_anim["duration"]
-        cmd.extend(["-ss", "0", "-t", f"{rem_dur:.2f}", "-i", rem_p])
+        if str(rem_p).lower().endswith(".webm"):
+            # CRITICAL: -c:v libvpx tells FFmpeg to decode yuva420p alpha transparency (zero black background box)
+            cmd.extend(["-c:v", "libvpx", "-ss", "0", "-t", f"{rem_dur:.2f}", "-i", str(rem_p)])
+        else:
+            cmd.extend(["-ss", "0", "-t", f"{rem_dur:.2f}", "-i", str(rem_p)])
         remotion_in_idx = input_idx
         input_idx += 1
 
@@ -958,17 +1027,18 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         curr_v = next_v
 
     # 4. Transparent Green-Screen Like & Subscribe Badge Overlay near video end (Compact bottom-right corner)
-    cta_start = cta_events[0] if cta_events else max(5.0, total_vo_dur - 4.5)
-    cta_out_start = map_vo_time_to_output(cta_start)
+    if cta_in_idx is not None:
+        cta_start = cta_events[0] if cta_events else max(5.0, total_vo_dur - 4.5)
+        cta_out_start = map_vo_time_to_output(cta_start)
 
-    filter_parts.append(
-        f"[3:v]setpts=PTS-STARTPTS+{cta_out_start:.2f}/TB,"
-        f"scale=340:190:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[cta_proc];"
-    )
-    filter_parts.append(
-        f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=W-w-80:y=H-h-80:eof_action=pass[v_cta];"
-    )
-    curr_v = "v_cta"
+        filter_parts.append(
+            f"[{cta_in_idx}:v]setpts=PTS-STARTPTS+{cta_out_start:.2f}/TB,"
+            f"scale=340:190:force_original_aspect_ratio=decrease,colorkey=0x00FF00:0.3:0.2,setsar=1,fps=60[cta_proc];"
+        )
+        filter_parts.append(
+            f"[{curr_v}][cta_proc]overlay=enable='between(t,{cta_out_start:.2f},{cta_out_start+3.5:.2f})':x=W-w-80:y=H-h-80:eof_action=pass[v_cta];"
+        )
+        curr_v = "v_cta"
 
     # 4b. Dynamic Remotion Overlay (TopicBadge, DiamondAlert, KillCard, HUDSensibilidad)
     if remotion_in_idx is not None:
@@ -990,9 +1060,9 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
     vo_chunks = []
 
     if has_intro and intro_input_idx is not None:
-        # 1. Voiceover during hook
+        # 1. Voiceover during hook + 2s breathing space before intro
         filter_parts.append(
-            f"[0:a]atrim=start=0:end={hook_duration:.3f},asetpts=PTS-STARTPTS,"
+            f"[0:a]atrim=start=0:end={intro_insert_time:.3f},asetpts=PTS-STARTPTS,"
             f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[vo_hook];"
         )
         vo_chunks.append("[vo_hook]")
@@ -1004,7 +1074,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
         )
         vo_chunks.append("[intro_aud]")
 
-        last_cut = hook_duration
+        last_cut = intro_insert_time
     else:
         last_cut = 0.0
 
@@ -1057,7 +1127,7 @@ def assemble_long_169_video(audio_path, custom_gameplay_dir=None, custom_bgm=Non
 
     # Background Music (covers total_output_dur at low level; ducked during intro)
     if has_intro:
-        bgm_vol_expr = f"volume='if(between(t,{hook_duration:.2f},{hook_duration+intro_dur:.2f}),0.01,0.08)':eval=frame"
+        bgm_vol_expr = f"volume='if(between(t,{intro_insert_time:.2f},{intro_insert_time+intro_dur:.2f}),0.01,0.08)':eval=frame"
     else:
         bgm_vol_expr = "volume=0.08"
 
