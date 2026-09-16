@@ -66,9 +66,37 @@ def is_upright_portrait_video(video_path: str) -> bool:
 
 def get_video_orientation_filter(video_path: str) -> str:
     """
-    Returns orientation filter for video. FFmpeg automatically handles rotation metadata.
-    Never returns destructive transpose filters that bend or rotate videos sideways.
+    Detects if a video stream is stored in portrait orientation (w < h) without rotation tags
+    (such as iOS screen recordings of landscape games like Free Fire IMG_1327..1335).
+    For these clips, transposing 90 degrees CCW (transpose=2) restores them to upright horizontal landscape.
     """
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_streams",
+            "-of", "json", str(video_path)
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if not res.stdout:
+            return ""
+        data = json.loads(res.stdout)
+        if not data.get("streams"):
+            return ""
+        s = data["streams"][0]
+        w = int(s.get("width", 0))
+        h = int(s.get("height", 0))
+        tags = s.get("tags", {})
+        rot = tags.get("rotate")
+        for sd in s.get("side_data_list", []):
+            if "rotation" in sd:
+                rot = sd["rotation"]
+
+        # If width < height and rotation is None or 0: it's stored sideways!
+        if w < h and (rot is None or str(rot).strip() in ["0", "None"]):
+            return "transpose=2,"
+    except Exception:
+        pass
     return ""
 
 def get_image_orientation_filter(image_path: str) -> str:

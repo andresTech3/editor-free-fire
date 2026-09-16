@@ -536,8 +536,9 @@ def main():
     color_filter_clean = "eq=contrast=1.12:saturation=1.28:brightness=0.02:gamma=1.0"
 
     # 1. State 1 Composition (Clean Kinetic Hook with dynamic camera punch, NO perspective skew/voleado distortion)
+    rot_s1 = get_video_orientation_filter(state1_clip["path"])
     filter_parts.append(
-        f"[{s1_indices[0]}:v]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,"
+        f"[{s1_indices[0]}:v]trim=duration={t_hook:.2f},setpts=PTS-STARTPTS,{rot_s1}"
         f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
         f"scale=eval=frame:w='iw*(1.0+0.12*pow(sin(3.14159*t/{t_hook:.2f}),2))':h='ih*(1.0+0.12*pow(sin(3.14159*t/{t_hook:.2f}),2))',"
         f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})/2,{color_filter_clean},setsar=1,fps=60[v_state1];"
@@ -549,8 +550,9 @@ def main():
     for i_num, (in_i, s2) in enumerate(s2_indices):
         lbl = f"v_s2_{i_num}"
         dur_s2 = s2["timeline_dur"]
+        rot_s2 = get_video_orientation_filter(s2["path"])
         filter_parts.append(
-            f"[{in_i}:v]trim=duration={dur_s2:.2f},setpts=PTS-STARTPTS,scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+            f"[{in_i}:v]trim=duration={dur_s2:.2f},setpts=PTS-STARTPTS,{rot_s2}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
             f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,{color_filter_clean},setsar=1,fps=60[{lbl}];"
         )
         concat_list.append(f"[{lbl}]")
@@ -558,8 +560,9 @@ def main():
     for i_num, (in_i, s3) in enumerate(s3_indices):
         lbl = f"v_s3_{i_num}"
         dur_s3 = s3["timeline_dur"]
+        rot_s3 = get_video_orientation_filter(s3["path"])
         filter_parts.append(
-            f"[{in_i}:v]trim=duration={dur_s3:.2f},setpts=PTS-STARTPTS,scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+            f"[{in_i}:v]trim=duration={dur_s3:.2f},setpts=PTS-STARTPTS,{rot_s3}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
             f"crop={out_w}:{out_h}:(in_w-{out_w})/2:(in_h-{out_h})/2,{color_filter_clean},setsar=1,fps=60[{lbl}];"
         )
         concat_list.append(f"[{lbl}]")
@@ -596,19 +599,34 @@ def main():
         )
         curr_v = next_v
 
-    # 5. Overlay Full-Screen 16:9 Reaction Memes (PACK DE MEMES - Zero Green Screen)
+    # 5. Overlay Reaction Memes (PACK DE MEMES - Zero Green Screen)
     for m_i, (m_in, me) in enumerate(meme_indices):
         next_v = f"v_meme_{m_i}"
         m_t = me["start"]
         m_dur = me["dur"]
-        filter_parts.append(
-            f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,"
-            f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
-            f"setsar=1,fps=60[m_proc_{m_i}];"
-        )
-        filter_parts.append(
-            f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=0:y=0:eof_action=pass[{next_v}];"
-        )
+        m_path = me["path"]
+        m_orient = get_video_orientation_filter(m_path)
+        if out_w < out_h:
+            # 9:16 Shorts: Compact reaction PIP in lower corners (never blocks crosshairs / center gameplay)
+            m_pos_x = "W-w-40" if (m_i % 2 == 0) else "40"
+            filter_parts.append(
+                f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,{m_orient}"
+                f"scale=440:440:force_original_aspect_ratio=decrease,pad=iw+6:ih+6:3:3:color=white@0.35,"
+                f"setsar=1,fps=60[m_proc_{m_i}];"
+            )
+            filter_parts.append(
+                f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x={m_pos_x}:y=H-h-260:eof_action=pass[{next_v}];"
+            )
+        else:
+            # 16:9 Landscape: Full frame reaction cutaway
+            filter_parts.append(
+                f"[{m_in}:v]setpts=PTS-STARTPTS+{m_t:.2f}/TB,{m_orient}"
+                f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,crop={out_w}:{out_h},"
+                f"setsar=1,fps=60[m_proc_{m_i}];"
+            )
+            filter_parts.append(
+                f"[{curr_v}][m_proc_{m_i}]overlay=enable='between(t,{m_t:.2f},{m_t+m_dur:.2f})':x=0:y=0:eof_action=pass[{next_v}];"
+            )
         curr_v = next_v
 
     # 6. State 4 Overlay: Sensitivity Spec Card OR Action Climax CTA Badge (Green Screen ONLY here)

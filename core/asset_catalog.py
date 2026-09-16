@@ -281,8 +281,15 @@ def get_gameplay_videos() -> List[str]:
     if not os.path.exists(DIR_GAMEPLAYS):
         return []
 
-    # Only exclude channel intro and low-res thumbnails
-    excluded_names = {"intro.mp4", "img_1356.mp4", "img_1366.mp4"}
+    # Exclude channel intro, low-res thumbnails, and non-gameplay app recordings (Discord, WhatsApp, CapCut UI)
+    excluded_names = {
+        "intro.mp4",
+        "img_1356.mp4",
+        "img_1366.mp4",
+        "img_1326.mov",
+        "img_1355.mp4",
+        "img_1372.mp4",
+    }
 
     files = []
     for f in sorted(os.listdir(DIR_GAMEPLAYS)):

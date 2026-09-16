@@ -295,7 +295,7 @@ def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
     else:
         exclude_kw = [
             "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "intro",
-            "img_1356", "img_1366"
+            "img_1356", "img_1366", "img_1326", "img_1355", "img_1372"
         ]
 
         for ext in video_exts:
@@ -310,7 +310,7 @@ def collect_916_gameplay_videos(custom_dir=None, specific_video=None):
         print("ℹ️ Usando clips de jugadas maestras oficiales...")
         exclude_kw = [
             "pack memes", "generar video", "imagenes", "efectos de sonidos", "musica", "intro",
-            "img_1356", "img_1366"
+            "img_1356", "img_1366", "img_1326", "img_1355", "img_1372"
         ]
 
         for ext in video_exts:
@@ -990,15 +990,17 @@ def assemble_short_916_video(audio_path, custom_gameplay_dir=None, specific_vide
         crop_filt = get_green_screen_crop_filter(m_path)
         # Use chromakey (YUV space) with 0.28 tolerance + 0.08 blend for clean transparent keying
         # across all shades of green in PACK MEMES PANTALLA VERDE without clipping skin tones.
+        # Scale to compact reaction PIP size in lower corner (never obstructs center crosshair or gameplay)
+        m_pos_x = "W-w-40" if (m_i % 2 == 0) else "40"
         filter_parts.append(
             f"[{m_in_idx}:v]setpts=PTS-STARTPTS+{m_out_t:.3f}/TB,{m_orient}{crop_filt}"
-            f"scale=800:1400:force_original_aspect_ratio=decrease,"
+            f"scale=440:440:force_original_aspect_ratio=decrease,"
             f"chromakey=0x00FF00:0.28:0.08,setsar=1,fps=60[m_proc_{m_i}];"
         )
         filter_parts.append(
             f"[{curr_v}][m_proc_{m_i}]overlay="
             f"enable='between(t,{m_out_t:.3f},{m_out_t+m_dur:.3f})':"
-            f"x=(W-w)/2:y={edition['meme_y_pos']}:eof_action=pass[{next_v}];"
+            f"x={m_pos_x}:y=H-h-260:eof_action=pass[{next_v}];"
         )
         curr_v = next_v
 
